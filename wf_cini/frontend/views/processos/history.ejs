@@ -1,0 +1,53 @@
+<%- include('../partials/shellStart', {
+  pageTitle,
+  pageDescription,
+  user,
+  currentPath,
+  breadcrumbs: [{ label: 'Processos', href: '/processos' }, { label: payload.process.codigo, href: '/processos/' + payload.process.id }, { label: 'Historico' }]
+}) %>
+
+<%
+  const __fmtDateTime = (typeof fmtDateTime === 'function')
+    ? fmtDateTime
+    : function (value) {
+        if (!value) return '-';
+        const d = value instanceof Date ? value : new Date(value);
+        if (Number.isNaN(d.getTime())) return '-';
+        return d.toLocaleString('pt-BR', {
+          timeZone: 'America/Sao_Paulo',
+          day: '2-digit',
+          month: '2-digit',
+          year: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+        });
+      };
+%>
+
+<div class="grid lg:grid-cols-3 gap-4">
+  <div class="wf-panel">
+    <h3 class="font-semibold mb-2">Resumo</h3>
+    <p class="text-sm text-slate-600">Processo: <strong><%= payload.process.nome %></strong></p>
+    <p class="text-sm text-slate-600">Instancias: <strong><%= payload.instances.length %></strong></p>
+  </div>
+
+  <div class="wf-panel lg:col-span-2">
+    <h3 class="font-semibold mb-3">Timeline</h3>
+    <div class="space-y-3 max-h-[520px] overflow-auto">
+      <% if (!payload.history.length) { %>
+        <p class="text-slate-500 text-sm">Ainda nao existem eventos para este processo.</p>
+      <% } %>
+      <% payload.history.forEach(function(item){ %>
+        <article class="p-3 rounded-xl border border-slate-200 bg-slate-50 text-sm">
+          <p class="font-semibold"><%= item.tipo_evento %></p>
+          <p class="text-xs text-slate-700"><%= item.descricao || '-' %></p>
+          <p class="text-xs text-slate-500 mt-1">
+            Instancia #<%= item.instancia_processo_id %> - <%= __fmtDateTime(item.created_at) %> - <%= item.executor || 'sistema' %>
+          </p>
+        </article>
+      <% }) %>
+    </div>
+  </div>
+</div>
+
+<%- include('../partials/shellEnd', { pageScript: '' }) %>

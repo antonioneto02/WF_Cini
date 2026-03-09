@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <%- include('System/headIncludes.ejs') %>
+  <title>Dashboard | CINI</title>
+</head>
+<body>
+  <div class="layout-container">
+    <%- include('partials/sidebar') %>
+
+    <div class="main-content">
+      <div class="topbar">
+        <div class="topbar-left">
+          <div class="page-info">
+            <h1>Dashboard</h1>
+            <p>ERP base pronto para evoluir modulos</p>
+          </div>
+        </div>
+        <div class="topbar-right">
+          <%- include('partials/userMenu') %>
+        </div>
+      </div>
+
+      <div class="content">
+        <div class="card">
+          <div class="card-header">ERP vazio</div>
+          <div class="card-body">
+            <p class="mb-2">Base criada com o mesmo padrao visual do Gestao Portaria.</p>
+            <p class="mb-0">Sidebar, navbar, login e conexoes de banco estao configurados.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <%- include('System/bodyIncludes.ejs') %>
+</body>
+</html>

@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><%= pageTitle %> | Workflow CINI</title>
+  <link rel="icon" type="image/png" href="/css/logo-cini.png">
+  <link rel="shortcut icon" type="image/png" href="/css/logo-cini.png">
+  <link rel="apple-touch-icon" href="/css/logo-cini.png">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            ciniBlue: '#0b4f6c',
+            ciniTeal: '#0f7c90',
+            ciniSky: '#d9f0ff',
+            ciniInk: '#172b3a',
+            ciniSoft: '#f4f8fb',
+          },
+          fontFamily: {
+            display: ['Poppins', 'sans-serif'],
+            body: ['Nunito Sans', 'sans-serif'],
+          },
+          boxShadow: {
+            panel: '0 18px 45px rgba(17, 70, 92, 0.14)',
+          },
+        },
+      },
+    };
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Nunito+Sans:wght@400;600;700;800&family=Poppins:wght@500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+  <% ((typeof extraStyles !== 'undefined' && Array.isArray(extraStyles)) ? extraStyles : []).forEach(function(href){ %>
+    <link rel="stylesheet" href="<%= href %>">
+  <% }) %>
+  <link rel="stylesheet" href="/workflow-assets/css/workflow.css">
+</head>
+<body class="wf-body font-body text-ciniInk">
+  <div class="wf-bg-layer"></div>
+  <div class="wf-app wf-sidebar-collapsed">
+    <aside class="wf-sidebar">
+      <div class="wf-brand">
+        <img src="/css/logo-cini.png" alt="CINI" class="wf-brand-logo">
+        <div>
+          <p class="wf-brand-title">Workflow BPM</p>
+          <p class="wf-brand-subtitle">Execucao corporativa</p>
+        </div>
+      </div>
+
+      <nav class="wf-nav">
+        <a href="/processos" class="wf-nav-item <%= currentPath && currentPath.startsWith('/processos') ? 'active' : '' %>">
+          <i class="bi bi-diagram-3"></i><span>Processos</span>
+        </a>
+        <a href="/tarefas" class="wf-nav-item <%= currentPath && currentPath.startsWith('/tarefas') ? 'active' : '' %>">
+          <i class="bi bi-kanban"></i><span>Minhas Tarefas</span>
+        </a>
+        <a href="/solicitacoes" class="wf-nav-item <%= currentPath && currentPath.startsWith('/solicitacoes') ? 'active' : '' %>">
+          <i class="bi bi-card-checklist"></i><span>Solicitacoes</span>
+        </a>
+        <a href="/formularios/construtor" class="wf-nav-item <%= currentPath && currentPath.startsWith('/formularios') ? 'active' : '' %>">
+          <i class="bi bi-ui-checks-grid"></i><span>Formularios</span>
+        </a>
+        <a href="/modelador" class="wf-nav-item <%= currentPath && currentPath.startsWith('/modelador') ? 'active' : '' %>">
+          <i class="bi bi-bezier2"></i><span>Modelador</span>
+        </a>
+        <a href="/bpm/admin" class="wf-nav-item <%= currentPath && currentPath.startsWith('/bpm/admin') ? 'active' : '' %>">
+          <i class="bi bi-sliders"></i><span>Administracao BPM</span>
+        </a>
+      </nav>
+
+      <div class="wf-sidebar-footer">
+        <p class="text-xs text-slate-600">Usuario logado</p>
+        <p class="font-semibold"><%= (user && user.nome) || 'Usuario' %></p>
+      </div>
+    </aside>
+
+    <main class="wf-main">
+      <header class="wf-topbar">
+        <div class="wf-heading-group">
+          <div class="wf-page-indicator" aria-hidden="true">
+            <img src="/css/logo-cini.png" alt="" class="wf-page-indicator-img">
+          </div>
+          <div>
+            <div class="wf-breadcrumb">
+              <span>Inicio</span>
+              <% (breadcrumbs || []).forEach(function(item){ %>
+                <span>/</span>
+                <% if (item.href) { %>
+                  <a href="<%= item.href %>"><%= item.label %></a>
+                <% } else { %>
+                  <strong><%= item.label %></strong>
+                <% } %>
+              <% }); %>
+            </div>
+            <h1 class="wf-page-title font-display"><%= pageTitle %></h1>
+            <p class="wf-page-subtitle"><%= pageDescription || '' %></p>
+          </div>
+        </div>
+        <div class="wf-user-area">
+          <div class="wf-user-chip" id="wfUserToggle" tabindex="0" role="button" aria-haspopup="true" aria-expanded="false">
+            <i class="bi bi-person-circle"></i>
+            <span><%= (user && user.nome) || 'Usuario' %></span>
+          </div>
+          <div class="wf-user-dropdown" id="wfUserDropdown" style="display:none;">
+            <div class="wf-user-dropdown-header">
+              <strong><%= (user && user.nome) || 'Usuario' %></strong>
+            </div>
+            <div class="wf-user-dropdown-actions">
+              <a href="/logout" class="wf-logout-link">Sair</a>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <section class="wf-content">

@@ -1,0 +1,81 @@
+<%- include('../partials/shellStart', {
+  pageTitle,
+  pageDescription,
+  user,
+  currentPath,
+  breadcrumbs: [{ label: 'Formularios' }]
+}) %>
+
+<div class="grid lg:grid-cols-3 gap-4">
+  <div class="wf-panel lg:col-span-2">
+    <form id="formBuilder" class="grid gap-4">
+      <div class="grid md:grid-cols-2 gap-2">
+        <div>
+          <label class="block text-sm font-semibold mb-1">Processo</label>
+          <select id="processoId" name="processoId" data-initial="<%= processoId || '' %>" required class="w-full px-3 py-2 rounded-xl border border-slate-300">
+            <option value=""><%= processoId ? 'Selecionar processo...' : 'Carregando processos...' %></option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-sm font-semibold mb-1">Nome do formulario</label>
+          <input id="formNome" name="nome" required class="w-full px-3 py-2 rounded-xl border border-slate-300" placeholder="Ex: Solicitação de compra" />
+        </div>
+      </div>
+
+      <div class="wf-panel bg-slate-50 border border-slate-200">
+        <h4 class="font-semibold mb-2 text-sm">Paleta de campos</h4>
+        <p class="text-xs text-slate-500 mb-2">Arraste um tipo para a area de montagem.</p>
+        <div class="grid md:grid-cols-4 gap-2">
+          <button type="button" draggable="true" class="field-template px-3 py-2 rounded-lg border border-slate-300 bg-white text-sm" data-type="text">Texto</button>
+          <button type="button" draggable="true" class="field-template px-3 py-2 rounded-lg border border-slate-300 bg-white text-sm" data-type="number">Numero</button>
+          <button type="button" draggable="true" class="field-template px-3 py-2 rounded-lg border border-slate-300 bg-white text-sm" data-type="date">Data</button>
+          <button type="button" draggable="true" class="field-template px-3 py-2 rounded-lg border border-slate-300 bg-white text-sm" data-type="textarea">Textarea</button>
+          <button type="button" draggable="true" class="field-template px-3 py-2 rounded-lg border border-slate-300 bg-white text-sm" data-type="select">Select</button>
+          <button type="button" draggable="true" class="field-template px-3 py-2 rounded-lg border border-slate-300 bg-white text-sm" data-type="checkbox">Checkbox</button>
+          <button type="button" draggable="true" class="field-template px-3 py-2 rounded-lg border border-slate-300 bg-white text-sm" data-type="upload">Upload</button>
+        </div>
+      </div>
+
+      <div class="wf-panel bg-white border border-slate-200">
+        <h4 class="font-semibold mb-2 text-sm">Area de montagem</h4>
+        <div id="formFieldDropzone" class="rounded-xl border-2 border-dashed border-slate-300 p-3 min-h-[160px]">
+          <div id="formFieldList" class="space-y-2"></div>
+          <p id="dropzoneHint" class="text-xs text-slate-500">Arraste campos para montar o formulario. A configuracao tecnica muda por tipo (texto, numero, checkbox, data, etc.).</p>
+        </div>
+      </div>
+
+      <div class="flex gap-2 justify-end">
+        <button type="button" id="cancelEditBtn" class="px-4 py-2 rounded-xl border border-slate-300 hidden">Cancelar edicao</button>
+        <button id="saveFormBtn" class="px-4 py-2 rounded-xl bg-ciniBlue text-white">Salvar formulario</button>
+      </div>
+    </form>
+
+    <hr class="my-4 border-slate-200" />
+
+    <h3 class="font-semibold mb-2">Preview da estrutura</h3>
+    <pre id="schemaPreview" class="bg-slate-900 text-slate-100 p-3 rounded-xl text-xs overflow-auto max-h-[320px]"></pre>
+  </div>
+
+  <div class="wf-panel">
+    <h3 class="font-semibold mb-2">Formularios cadastrados</h3>
+    <div class="space-y-2 text-sm max-h-[520px] overflow-auto" id="formsList">
+      <% forms.forEach(function(form){ %>
+        <article class="p-2 rounded-lg bg-slate-50 border border-slate-200" data-form-id="<%= form.id %>">
+          <p class="font-semibold"><%= form.nome %></p>
+          <p class="text-xs text-slate-500">Processo: <%= form.processo_nome || '-' %> (ID <%= form.processo_id %>)</p>
+          <div class="mt-2">
+            <button type="button" class="edit-form-btn px-2 py-1 rounded border border-cyan-300 text-cyan-700 text-xs" data-form-id="<%= form.id %>">Editar formulario</button>
+            <button type="button" class="delete-form-btn px-2 py-1 rounded border border-rose-300 text-rose-700 text-xs" data-form-id="<%= form.id %>" data-form-name="<%= form.nome %>">Excluir</button>
+          </div>
+        </article>
+      <% }) %>
+      <% if (!forms.length) { %>
+        <p class="text-slate-500">Nenhum formulario cadastrado.</p>
+      <% } %>
+    </div>
+  </div>
+</div>
+
+<script id="formBuilderSeed" type="application/json"><%- JSON.stringify({ forms: forms || [], processoId: processoId || null }) %></script>
+
+<%- include('../partials/shellEnd', { pageScript: '/workflow-assets/js/form-builder.js' }) %>

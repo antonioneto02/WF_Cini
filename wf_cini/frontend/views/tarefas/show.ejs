@@ -1,0 +1,76 @@
+<%- include('../partials/shellStart', {
+  pageTitle,
+  pageDescription,
+  user,
+  currentPath,
+  breadcrumbs: [{ label: 'Tarefas', href: '/tarefas' }, { label: '#' + payload.task.id }]
+}) %>
+
+<%
+  const __fmtDateTime = (typeof fmtDateTime === 'function')
+    ? fmtDateTime
+    : function (value) {
+        if (!value) return '-';
+        const d = value instanceof Date ? value : new Date(value);
+        if (Number.isNaN(d.getTime())) return '-';
+        return d.toLocaleString('pt-BR', {
+          timeZone: 'America/Sao_Paulo',
+          day: '2-digit',
+          month: '2-digit',
+          year: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+        });
+      };
+%>
+
+<div class="grid lg:grid-cols-3 gap-4">
+  <div class="wf-panel lg:col-span-2">
+    <h2 class="text-lg font-semibold mb-2">Execucao da tarefa</h2>
+    <p class="text-sm text-slate-600 mb-3">Processo: <strong><%= payload.task.processo_nome %></strong></p>
+
+    <div class="grid md:grid-cols-2 gap-3 text-sm mb-4">
+      <div class="p-3 rounded-xl bg-slate-50 border border-slate-200"><strong>Atividade atual:</strong> <%= payload.task.nome_etapa %></div>
+      <div class="p-3 rounded-xl bg-slate-50 border border-slate-200"><strong>Status:</strong> <%= payload.task.status %></div>
+      <div class="p-3 rounded-xl bg-slate-50 border border-slate-200"><strong>Solicitante:</strong> <%= payload.task.solicitante || '-' %></div>
+      <div class="p-3 rounded-xl bg-slate-50 border border-slate-200"><strong>Data inicio:</strong> <%= __fmtDateTime(payload.task.started_at || payload.task.created_at) %></div>
+    </div>
+
+    <h3 class="font-semibold mb-2">Formulario dinamico</h3>
+    <form id="taskCompleteForm" data-task-id="<%= payload.task.id %>" class="grid gap-3">
+      <div id="dynamicFormRoot" class="grid gap-3"></div>
+
+      <div>
+        <label class="block text-sm font-semibold mb-1">Observacao</label>
+        <textarea name="observacao" rows="3" class="w-full px-3 py-2 rounded-xl border border-slate-300" placeholder="Comentario da aprovacao/rejeicao"></textarea>
+      </div>
+
+      <div class="flex gap-2 justify-end flex-wrap">
+        <button type="button" id="saveDraftBtn" class="px-4 py-2 rounded-xl border border-slate-300">Salvar rascunho</button>
+        <button type="button" data-action="concluir" class="complete-btn px-4 py-2 rounded-xl border border-rose-300 text-rose-700">Concluir tarefa</button>
+        <button type="button" data-action="aprovar" class="complete-btn px-4 py-2 rounded-xl bg-ciniBlue text-white">Enviar para proxima etapa</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="wf-panel">
+    <h3 class="font-semibold mb-3">Historico</h3>
+    <div class="space-y-3 max-h-[420px] overflow-auto">
+      <% payload.history.forEach(function(item){ %>
+        <article class="p-3 rounded-xl border border-slate-200 bg-slate-50 text-sm">
+          <p class="font-semibold"><%= item.tipo_evento %></p>
+          <p class="text-xs text-slate-600"><%= item.descricao || '-' %></p>
+          <p class="text-xs text-slate-500 mt-1"><%= __fmtDateTime(item.created_at) %> - <%= item.executor || 'sistema' %></p>
+        </article>
+      <% }) %>
+    </div>
+  </div>
+</div>
+
+<script id="taskDetailSeed" type="application/json"><%- JSON.stringify({
+  task: payload.task,
+  form: payload.form,
+  responses: payload.responses
+}) %></script>
+
+<%- include('../partials/shellEnd', { pageScript: '/workflow-assets/js/task-detail.js' }) %>

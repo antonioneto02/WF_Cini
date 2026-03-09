@@ -1,0 +1,106 @@
+<%- include('../partials/shellStart', {
+  pageTitle,
+  pageDescription,
+  user,
+  currentPath,
+  breadcrumbs: [{ label: 'Processos' }]
+}) %>
+
+<%
+  const __fmtDateTime = (typeof fmtDateTime === 'function')
+    ? fmtDateTime
+    : function (value) {
+        if (!value) return '-';
+        const d = value instanceof Date ? value : new Date(value);
+        if (Number.isNaN(d.getTime())) return '-';
+        return d.toLocaleString('pt-BR', {
+          timeZone: 'America/Sao_Paulo',
+          day: '2-digit',
+          month: '2-digit',
+          year: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+        });
+      };
+%>
+
+<div class="wf-panel">
+  <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+    <form method="GET" action="/processos" class="flex gap-2">
+      <input
+        name="search"
+        value="<%= search %>"
+        placeholder="Pesquisar por nome ou codigo"
+        class="px-3 py-2 rounded-xl border border-slate-300 min-w-[260px]"
+      />
+      <button class="px-4 py-2 rounded-xl bg-ciniBlue text-white font-semibold">Buscar</button>
+    </form>
+
+    <a href="/processos/novo" class="px-4 py-2 rounded-xl bg-ciniTeal text-white font-semibold inline-flex items-center gap-2">
+      <i class="bi bi-plus-circle"></i>
+      NOVO PROCESSO
+    </a>
+  </div>
+
+  <div class="overflow-auto">
+    <table class="w-full text-sm">
+      <thead>
+        <tr class="text-left border-b border-slate-200">
+          <th class="py-2 pr-3">Nome do processo</th>
+          <th class="py-2 pr-3">Versao</th>
+          <th class="py-2 pr-3">Status</th>
+          <th class="py-2 pr-3">Criado em</th>
+          <th class="py-2 pr-3">Criado por</th>
+          <th class="py-2 pr-3">Acoes</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% if (!result.data.length) { %>
+          <tr><td colspan="6" class="py-4 text-slate-500">Nenhum processo encontrado.</td></tr>
+        <% } %>
+
+        <% result.data.forEach(function(item){ %>
+          <tr class="border-b border-slate-100 hover:bg-slate-50/70">
+            <td class="py-3 pr-3">
+              <p class="font-semibold"><%= item.nome %></p>
+              <p class="text-xs text-slate-500">Codigo: <%= item.codigo %></p>
+            </td>
+            <td class="py-3 pr-3">
+              <% if (item.versao) { %>
+                v<%= item.versao %> - <%= item.versao_status %>
+              <% } else { %>
+                sem versao
+              <% } %>
+            </td>
+            <td class="py-3 pr-3"><span class="px-2 py-1 rounded-lg bg-cyan-50 text-cyan-800"><%= item.status %></span></td>
+            <td class="py-3 pr-3"><%= __fmtDateTime(item.created_at) %></td>
+            <td class="py-3 pr-3"><%= item.created_by || '-' %></td>
+            <td class="py-3 pr-3">
+              <div class="flex gap-2 flex-wrap">
+                <a class="px-3 py-1 rounded-lg border border-slate-300" href="/processos/<%= item.id %>/editar">Editar</a>
+                <button
+                  type="button"
+                  class="delete-process-btn px-3 py-1 rounded-lg border border-rose-300 text-rose-700"
+                  data-process-id="<%= item.id %>"
+                  data-process-name="<%= item.nome %>"
+                >Excluir</button>
+                <% if (item.versao_id) { %>
+                  <a class="px-3 py-1 rounded-lg border border-emerald-300 text-emerald-700" href="/processos/<%= item.id %>/publicar?versaoId=<%= item.versao_id %>">Publicar</a>
+                <% } %>
+                <a class="px-3 py-1 rounded-lg border border-cyan-300 text-cyan-700" href="/processos/<%= item.id %>/iniciar">Iniciar processo</a>
+                <a class="px-3 py-1 rounded-lg border border-amber-300 text-amber-700" href="/processos/<%= item.id %>/historico">Historico</a>
+                <a class="px-3 py-1 rounded-lg border border-indigo-300 text-indigo-700" href="/processos/<%= item.id %>/modelar">Nova versao</a>
+              </div>
+            </td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="mt-4 text-sm text-slate-500">
+    Total de registros: <strong><%= result.total %></strong>
+  </div>
+</div>
+
+<%- include('../partials/shellEnd', { pageScript: '/workflow-assets/js/process-index.js' }) %>

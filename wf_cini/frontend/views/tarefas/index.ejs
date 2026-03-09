@@ -1,0 +1,98 @@
+<%- include('../partials/shellStart', {
+  pageTitle,
+  pageDescription,
+  user,
+  currentPath,
+  breadcrumbs: [{ label: 'Minhas Tarefas' }]
+}) %>
+
+<%
+  const __fmtDateTime = (typeof fmtDateTime === 'function')
+    ? fmtDateTime
+    : function (value) {
+        if (!value) return '-';
+        const d = value instanceof Date ? value : new Date(value);
+        if (Number.isNaN(d.getTime())) return '-';
+        return d.toLocaleString('pt-BR', {
+          timeZone: 'America/Sao_Paulo',
+          day: '2-digit',
+          month: '2-digit',
+          year: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+        });
+      };
+
+  const __toEpochMs = (typeof toEpochMs === 'function')
+    ? toEpochMs
+    : function (value) {
+        if (!value) return '';
+        const d = value instanceof Date ? value : new Date(value);
+        if (Number.isNaN(d.getTime())) return '';
+        return String(d.getTime());
+      };
+%>
+
+<div class="wf-panel mb-4">
+  <form id="taskFilterForm" class="grid md:grid-cols-4 gap-2 items-end">
+    <div>
+      <label class="block text-xs font-semibold mb-1">Processo ID</label>
+      <input name="processoId" value="<%= filters.processoId %>" class="w-full px-3 py-2 rounded-xl border border-slate-300" placeholder="ID" />
+    </div>
+
+    <div>
+      <label class="block text-xs font-semibold mb-1">Status</label>
+      <select name="status" class="w-full px-3 py-2 rounded-xl border border-slate-300">
+        <option value="">Todos</option>
+        <option value="MINHAS_TAREFAS" <%= filters.status === 'MINHAS_TAREFAS' ? 'selected' : '' %>>Minhas tarefas</option>
+        <option value="EM_ANDAMENTO" <%= filters.status === 'EM_ANDAMENTO' ? 'selected' : '' %>>Em andamento</option>
+        <option value="CONCLUIDA" <%= filters.status === 'CONCLUIDA' ? 'selected' : '' %>>Concluidas</option>
+      </select>
+    </div>
+
+    <div>
+      <label class="block text-xs font-semibold mb-1">Pesquisa</label>
+      <input name="search" value="<%= filters.search %>" class="w-full px-3 py-2 rounded-xl border border-slate-300" placeholder="processo, etapa, solicitante" />
+    </div>
+
+    <button class="px-4 py-2 rounded-xl bg-ciniBlue text-white">Filtrar</button>
+  </form>
+</div>
+
+<div class="wf-panel">
+  <div class="overflow-auto">
+    <table class="w-full text-sm">
+      <thead>
+        <tr class="text-left border-b border-slate-200">
+          <th class="py-2 pr-3">Processo</th>
+          <th class="py-2 pr-3">Solicitacao</th>
+          <th class="py-2 pr-3">Atividade atual</th>
+          <th class="py-2 pr-3">Data criacao</th>
+          <th class="py-2 pr-3">Prazo</th>
+          <th class="py-2 pr-3">Status</th>
+          <th class="py-2 pr-3">Acoes</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% if (!result.data.length) { %>
+          <tr><td colspan="7" class="py-4 text-slate-500">Nenhuma tarefa pendente para os filtros informados.</td></tr>
+        <% } %>
+        <% result.data.forEach(function(task){ %>
+          <tr class="border-b border-slate-100">
+            <td class="py-3 pr-3"><%= task.processo_nome %></td>
+            <td class="py-3 pr-3">#<%= task.instancia_processo_id %></td>
+            <td class="py-3 pr-3 font-semibold"><%= task.nome_etapa %></td>
+            <td class="py-3 pr-3"><%= __fmtDateTime(task.created_at) %></td>
+            <td class="py-3 pr-3"><span class="sla-badge" data-created-at-ms="<%= __toEpochMs(task.created_at) %>" data-completed-at-ms="<%= __toEpochMs(task.completed_at) %>" data-status="<%= task.status || '' %>" data-sla-hours="<%= task.sla_horas || 24 %>"></span></td>
+            <td class="py-3 pr-3"><span class="px-2 py-1 rounded-lg bg-slate-100"><%= task.status %></span></td>
+            <td class="py-3 pr-3"><a href="/tarefas/<%= task.id %>" class="px-3 py-1 rounded-lg border border-cyan-300 text-cyan-700">Abrir tarefa</a></td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="mt-4 text-sm text-slate-500">Total de cards: <strong><%= result.total %></strong></div>
+
+<%- include('../partials/shellEnd', { pageScript: '/workflow-assets/js/tasks-kanban.js' }) %>

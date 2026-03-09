@@ -1,0 +1,42 @@
+<%- include('../partials/shellStart', {
+  pageTitle,
+  pageDescription,
+  user,
+  currentPath,
+  breadcrumbs: [{ label: 'Processos', href: '/processos' }, { label: details.process.codigo, href: '/processos/' + details.process.id }, { label: 'Editar' }]
+}) %>
+
+<div class="wf-panel max-w-3xl">
+  <form id="processEditForm" data-process-id="<%= details.process.id %>" class="grid gap-4">
+    <div class="grid md:grid-cols-2 gap-3">
+      <div>
+        <label class="block text-sm font-semibold mb-1">Nome do processo</label>
+        <input required name="nome" value="<%= details.process.nome %>" class="w-full px-3 py-2 rounded-xl border border-slate-300" />
+      </div>
+      <div>
+        <label class="block text-sm font-semibold mb-1">Codigo</label>
+        <input readonly value="<%= details.process.codigo %>" class="w-full px-3 py-2 rounded-xl border border-slate-300 bg-slate-50" />
+      </div>
+    </div>
+
+    <div>
+      <label class="block text-sm font-semibold mb-1">Descricao</label>
+      <textarea name="descricao" rows="4" class="w-full px-3 py-2 rounded-xl border border-slate-300"><%= details.process.descricao || '' %></textarea>
+    </div>
+
+    <div class="max-w-xs">
+      <label class="block text-sm font-semibold mb-1">Status</label>
+      <select name="status" class="w-full px-3 py-2 rounded-xl border border-slate-300">
+        <option value="ATIVO" <%= details.process.status === 'ATIVO' ? 'selected' : '' %>>ATIVO</option>
+        <option value="INATIVO" <%= details.process.status === 'INATIVO' ? 'selected' : '' %>>INATIVO</option>
+      </select>
+    </div>
+
+    <div class="flex gap-2 justify-end">
+      <a href="/processos/<%= details.process.id %>" class="px-4 py-2 rounded-xl border border-slate-300">Cancelar</a>
+      <button class="px-4 py-2 rounded-xl bg-ciniBlue text-white">Salvar alteracoes</button>
+    </div>
+  </form>
+</div>
+
+<%- include('../partials/shellEnd', { pageScript: '/workflow-assets/js/process-edit.js' }) %>

@@ -1,0 +1,131 @@
+<%- include('../partials/shellStart', {
+  pageTitle,
+  pageDescription,
+  user,
+  currentPath,
+  breadcrumbs: [{ label: 'Processos', href: '/processos' }, { label: payload.process.codigo, href: '/processos/' + payload.process.id }, { label: 'Modelador' }],
+  extraStyles: [
+    'https://unpkg.com/bpmn-js@17.11.1/dist/assets/diagram-js.css',
+    'https://unpkg.com/bpmn-js@17.11.1/dist/assets/bpmn-js.css',
+    'https://unpkg.com/bpmn-js@17.11.1/dist/assets/bpmn-font/css/bpmn.css'
+  ]
+}) %>
+
+<div class="wf-panel">
+  <div class="flex flex-wrap gap-2 items-center justify-between mb-3">
+    <div class="flex gap-2 flex-wrap">
+      <button id="btnSaveVersion" class="px-4 py-2 rounded-xl bg-ciniBlue text-white font-semibold">Salvar nova versao</button>
+      <button id="btnZoomIn" class="px-3 py-2 rounded-xl border border-slate-300">Zoom +</button>
+      <button id="btnZoomOut" class="px-3 py-2 rounded-xl border border-slate-300">Zoom -</button>
+      <button id="btnFit" class="px-3 py-2 rounded-xl border border-slate-300">Fit</button>
+      <button id="btnUndo" class="px-3 py-2 rounded-xl border border-slate-300">Undo</button>
+      <button id="btnRedo" class="px-3 py-2 rounded-xl border border-slate-300">Redo</button>
+      <button id="btnAlign" class="px-3 py-2 rounded-xl border border-slate-300">Auto-align</button>
+    </div>
+
+    <div class="text-sm text-slate-500">
+      Processo: <strong><%= payload.process.nome %></strong>
+      <% if (payload.version) { %>
+        | Editando versao: <strong>v<%= payload.version.versao %></strong>
+      <% } %>
+    </div>
+  </div>
+
+  <div class="wf-modeler-grid wf-modeler-grid-pro">
+    <aside class="wf-toolbox-panel" id="wfToolboxPanel">
+      <h3 class="font-semibold text-sm mb-2">Ferramentas</h3>
+      <div class="wf-toolbox-list">
+        <button type="button" class="wf-toolbox-item" data-tool-type="bpmn:StartEvent"><i class="bi bi-play-circle"></i><span>Evento inicial</span></button>
+        <button type="button" class="wf-toolbox-item" data-tool-type="bpmn:EndEvent"><i class="bi bi-stop-circle"></i><span>Evento final</span></button>
+        <button type="button" class="wf-toolbox-item" data-tool-type="bpmn:UserTask"><i class="bi bi-person"></i><span>Tarefa de usuario</span></button>
+        <button type="button" class="wf-toolbox-item" data-tool-type="bpmn:ServiceTask"><i class="bi bi-cpu"></i><span>Tarefa de servico</span></button>
+        <button type="button" class="wf-toolbox-item" data-tool-type="bpmn:SequenceFlow"><i class="bi bi-arrow-right"></i><span>Fluxo (seta)</span></button>
+        <button type="button" class="wf-toolbox-item" data-tool-type="bpmn:ExclusiveGateway"><i class="bi bi-sign-intersection"></i><span>Gateway exclusivo</span></button>
+        <button type="button" class="wf-toolbox-item" data-tool-type="bpmn:ParallelGateway"><i class="bi bi-distribute-vertical"></i><span>Gateway paralelo</span></button>
+        <button type="button" class="wf-toolbox-item" data-tool-type="bpmn:IntermediateCatchEvent"><i class="bi bi-record-circle"></i><span>Evento intermediario</span></button>
+        <button type="button" class="wf-toolbox-item" data-tool-type="bpmn:SubProcess"><i class="bi bi-diagram-2"></i><span>Subprocesso</span></button>
+      </div>
+    </aside>
+
+    <div class="wf-modeler-canvas-wrap">
+      <div id="bpmnCanvas" class="wf-modeler-canvas"></div>
+      <div id="flowInsertFab" class="wf-flow-insert-fab" style="display:none;">+</div>
+    </div>
+
+    <aside class="wf-props-panel">
+      <h3 class="text-base font-semibold mb-3">Propriedades do elemento</h3>
+      <form id="propsForm" class="grid gap-3 text-sm">
+        <input type="hidden" id="selectedElementId" />
+
+        <div>
+          <label class="block mb-1 font-semibold">Nome da atividade</label>
+          <input id="propName" class="w-full px-3 py-2 rounded-xl border border-slate-300" />
+        </div>
+
+        <div>
+          <label class="block mb-1 font-semibold">Execucao da tarefa</label>
+          <select id="propTaskType" class="w-full px-3 py-2 rounded-xl border border-slate-300">
+            <option value="USER">Usuario</option>
+            <option value="SERVICE">Servico</option>
+            <option value="SCRIPT">Script</option>
+          </select>
+        </div>
+
+        <div>
+          <label class="block mb-1 font-semibold">Responsavel</label>
+          <div class="relative">
+            <input id="propResponsible" placeholder="Digite o nome do usuario" class="w-full px-3 py-2 rounded-xl border border-slate-300" autocomplete="off" />
+            <input type="hidden" id="propResponsibleId" />
+            <div id="responsibleUsersList" class="hidden absolute left-0 right-0 z-20 mt-1 max-h-56 overflow-auto rounded-xl border border-slate-200 bg-white shadow-lg"></div>
+          </div>
+        </div>
+
+        <div>
+          <label class="block mb-1 font-semibold">SLA (horas)</label>
+          <input id="propSla" type="number" min="1" class="w-full px-3 py-2 rounded-xl border border-slate-300" />
+        </div>
+
+        <div>
+          <label class="block mb-1 font-semibold">Condicao (gateway/fluxo)</label>
+          <textarea id="propCondition" rows="2" class="w-full px-3 py-2 rounded-xl border border-slate-300" placeholder="Ex: payload.valor > 5000"></textarea>
+        </div>
+
+        <div>
+          <label class="block mb-1 font-semibold">Formulario vinculado</label>
+          <select id="propFormId" class="w-full px-3 py-2 rounded-xl border border-slate-300">
+            <option value="">Nenhum</option>
+            <% payload.forms.forEach(function(form){ %>
+              <option value="<%= form.id %>"><%= form.nome %></option>
+            <% }) %>
+          </select>
+        </div>
+
+        <p class="text-xs text-slate-500">
+          Dica: selecione dois elementos e clique em "Fluxo (seta)" para conectar manualmente.
+        </p>
+
+        <button type="button" id="btnApplyProps" class="px-4 py-2 rounded-xl bg-ciniTeal text-white font-semibold">APLICAR ALTERACOES</button>
+      </form>
+    </aside>
+  </div>
+</div>
+
+<div id="modelerContextMenu" class="wf-context-menu" style="display:none;">
+  <button type="button" data-action="edit">Editar</button>
+  <button type="button" data-action="delete">Excluir</button>
+  <button type="button" data-action="duplicate">Duplicar</button>
+  <button type="button" data-action="add-task-after">Adicionar tarefa depois</button>
+  <button type="button" data-action="add-gateway-after">Adicionar gateway</button>
+  <button type="button" data-action="associate-form">Associar formulario</button>
+  <button type="button" data-action="set-responsible">Definir responsavel</button>
+</div>
+
+<script id="modelerSeed" type="application/json"><%- JSON.stringify({
+  processoId: payload.process.id,
+  bpmnXml: bpmnXml,
+  propriedades: propriedades,
+  forms: payload.forms
+}) %></script>
+<script type="module" src="/workflow-assets/js/modeler.js"></script>
+
+<%- include('../partials/shellEnd', { pageScript: '' }) %>

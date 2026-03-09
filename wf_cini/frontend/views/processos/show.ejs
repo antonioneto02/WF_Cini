@@ -1,0 +1,99 @@
+<%- include('../partials/shellStart', {
+  pageTitle,
+  pageDescription,
+  user,
+  currentPath,
+  breadcrumbs: [{ label: 'Processos', href: '/processos' }, { label: details.process.codigo }]
+}) %>
+
+<%
+  const __fmtDateTime = (typeof fmtDateTime === 'function')
+    ? fmtDateTime
+    : function (value) {
+        if (!value) return '-';
+        const d = value instanceof Date ? value : new Date(value);
+        if (Number.isNaN(d.getTime())) return '-';
+        return d.toLocaleString('pt-BR', {
+          timeZone: 'America/Sao_Paulo',
+          day: '2-digit',
+          month: '2-digit',
+          year: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+        });
+      };
+%>
+
+<div class="grid lg:grid-cols-3 gap-4">
+  <div class="wf-panel lg:col-span-2">
+    <h2 class="text-lg font-semibold mb-3">Versoes do processo</h2>
+    <div class="overflow-auto">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="text-left border-b border-slate-200">
+            <th class="py-2 pr-3">Versao</th>
+            <th class="py-2 pr-3">Status</th>
+            <th class="py-2 pr-3">Publicada em</th>
+            <th class="py-2 pr-3">Acoes</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% if (!details.versions.length) { %>
+            <tr><td colspan="4" class="py-4 text-slate-500">Ainda nao existem versoes.</td></tr>
+          <% } %>
+
+          <% details.versions.forEach(function(version){ %>
+            <tr class="border-b border-slate-100">
+              <td class="py-3 pr-3 font-semibold">v<%= version.versao %></td>
+              <td class="py-3 pr-3"><span class="px-2 py-1 rounded-lg bg-slate-100"><%= version.status %></span></td>
+              <td class="py-3 pr-3"><%= __fmtDateTime(version.publicado_em) %></td>
+              <td class="py-3 pr-3">
+                <div class="flex gap-2 flex-wrap">
+                  <a class="px-3 py-1 rounded-lg border border-slate-300" href="/processos/<%= details.process.id %>/modelar?versaoId=<%= version.id %>">Abrir no modelador</a>
+                  <button
+                    class="publish-btn px-3 py-1 rounded-lg border border-emerald-300 text-emerald-700"
+                    data-process-id="<%= details.process.id %>"
+                    data-version-id="<%= version.id %>"
+                  >Publicar</button>
+                </div>
+              </td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="wf-panel">
+    <h2 class="text-lg font-semibold mb-3">Acoes do processo</h2>
+    <p class="text-sm text-slate-600 mb-3">Use o fluxo guiado para iniciar uma solicitacao com formulario inicial.</p>
+
+    <div class="grid gap-2">
+      <a href="/processos/<%= details.process.id %>/iniciar" class="px-4 py-2 rounded-xl bg-ciniTeal text-white text-center">Iniciar processo</a>
+      <a href="/processos/<%= details.process.id %>/editar" class="px-4 py-2 rounded-xl border border-slate-300 text-center">Editar processo</a>
+      <a href="/processos/<%= details.process.id %>/historico" class="px-4 py-2 rounded-xl border border-slate-300 text-center">Historico</a>
+    </div>
+
+    <hr class="my-4 border-slate-200" />
+    <h3 class="font-semibold mb-2">Formularios vinculados</h3>
+    <ul class="text-sm space-y-2">
+      <% if (!details.forms.length) { %>
+        <li class="text-slate-500">Nenhum formulario cadastrado.</li>
+      <% } %>
+      <% details.forms.forEach(function(form){ %>
+        <li class="px-2 py-1 rounded-lg bg-slate-50 border border-slate-200"><%= form.nome %></li>
+      <% }) %>
+    </ul>
+  </div>
+</div>
+
+<div class="mt-4">
+  <a href="/processos/<%= details.process.id %>/modelar" class="px-4 py-2 rounded-xl bg-ciniBlue text-white inline-flex items-center gap-2">
+    <i class="bi bi-pencil-square"></i>
+    Abrir modelador BPMN
+  </a>
+</div>
+
+<%- include('../partials/shellEnd', {
+  pageScript: '/workflow-assets/js/process-detail.js'
+}) %>
