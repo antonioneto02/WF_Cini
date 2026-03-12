@@ -24,75 +24,175 @@
       };
 %>
 
-<div class="grid lg:grid-cols-3 gap-4">
-  <div class="wf-panel lg:col-span-2">
-    <h2 class="text-lg font-semibold mb-3">Versoes do processo</h2>
-    <div class="overflow-auto">
-      <table class="w-full text-sm">
-        <thead>
-          <tr class="text-left border-b border-slate-200">
-            <th class="py-2 pr-3">Versao</th>
-            <th class="py-2 pr-3">Status</th>
-            <th class="py-2 pr-3">Publicada em</th>
-            <th class="py-2 pr-3">Acoes</th>
-          </tr>
-        </thead>
-        <tbody>
-          <% if (!details.versions.length) { %>
-            <tr><td colspan="4" class="py-4 text-slate-500">Ainda nao existem versoes.</td></tr>
-          <% } %>
-
-          <% details.versions.forEach(function(version){ %>
-            <tr class="border-b border-slate-100">
-              <td class="py-3 pr-3 font-semibold">v<%= version.versao %></td>
-              <td class="py-3 pr-3"><span class="px-2 py-1 rounded-lg bg-slate-100"><%= version.status %></span></td>
-              <td class="py-3 pr-3"><%= __fmtDateTime(version.publicado_em) %></td>
-              <td class="py-3 pr-3">
-                <div class="flex gap-2 flex-wrap">
-                  <a class="px-3 py-1 rounded-lg border border-slate-300" href="/processos/<%= details.process.id %>/modelar?versaoId=<%= version.id %>">Abrir no modelador</a>
-                  <button
-                    class="publish-btn px-3 py-1 rounded-lg border border-emerald-300 text-emerald-700"
-                    data-process-id="<%= details.process.id %>"
-                    data-version-id="<%= version.id %>"
-                  >Publicar</button>
-                </div>
-              </td>
-            </tr>
-          <% }) %>
-        </tbody>
-      </table>
+<!-- Process header -->
+<div class="wf-solic-header" style="margin-bottom:20px">
+  <div style="display:flex;align-items:center;gap:12px">
+    <a href="/processos" class="wf-btn-secondary" style="padding:6px 10px" title="Voltar"><i class="bi bi-arrow-left"></i></a>
+    <div>
+      <h2 style="margin:0;font-size:1.15rem;font-weight:600;color:#202124">
+        <%= details.process.nome %> <span style="font-weight:400;color:#5f6368"><%= details.process.codigo %></span>
+      </h2>
+      <p style="margin:2px 0 0;font-size:.85rem;color:#5f6368">Instancias: <strong><%= details.totalInstances || 0 %></strong></p>
     </div>
   </div>
+  <div style="display:flex;gap:8px">
+    <a href="/processos/<%= details.process.id %>/instancias" class="wf-btn-secondary"><i class="bi bi-diagram-2"></i> Linha das instancias</a>
+    <% if (canExecute) { %>
+      <a href="/processos/<%= details.process.id %>/iniciar" class="wf-btn-primary"><i class="bi bi-play-fill"></i> Iniciar processo</a>
+    <% } %>
+    <% if (canEdit || canAdmin) { %>
+      <a href="/processos/<%= details.process.id %>/editar" class="wf-btn-secondary"><i class="bi bi-pencil"></i> Editar</a>
+    <% } %>
+  </div>
+</div>
 
-  <div class="wf-panel">
-    <h2 class="text-lg font-semibold mb-3">Acoes do processo</h2>
-    <p class="text-sm text-slate-600 mb-3">Use o fluxo guiado para iniciar uma solicitacao com formulario inicial.</p>
+<!-- Tabs -->
+<div class="wf-tabs" style="margin-bottom:0;border-radius:8px 8px 0 0">
+  <a href="#" class="wf-tab active" data-tab="versions">Versoes</a>
+  <a href="#" class="wf-tab" data-tab="integrations">Integracoes</a>
+  <a href="#" class="wf-tab" data-tab="forms">Formularios</a>
+  <a href="#" class="wf-tab" data-tab="ecm">Documentos (ECM)</a>
+</div>
 
-    <div class="grid gap-2">
-      <a href="/processos/<%= details.process.id %>/iniciar" class="px-4 py-2 rounded-xl bg-ciniTeal text-white text-center">Iniciar processo</a>
-      <a href="/processos/<%= details.process.id %>/editar" class="px-4 py-2 rounded-xl border border-slate-300 text-center">Editar processo</a>
-      <a href="/processos/<%= details.process.id %>/historico" class="px-4 py-2 rounded-xl border border-slate-300 text-center">Historico</a>
-    </div>
-
-    <hr class="my-4 border-slate-200" />
-    <h3 class="font-semibold mb-2">Formularios vinculados</h3>
-    <ul class="text-sm space-y-2">
-      <% if (!details.forms.length) { %>
-        <li class="text-slate-500">Nenhum formulario cadastrado.</li>
+<!-- Versoes tab -->
+<div class="wf-panel" id="tab-versions" style="border-radius:0 0 8px 8px;margin-top:0;padding:0">
+  <table class="wf-table" style="margin:0">
+    <thead><tr><th>Versao</th><th>Status</th><th>Publicada em</th><th>Acoes</th></tr></thead>
+    <tbody>
+      <% if (!details.versions.length) { %>
+        <tr><td colspan="4" style="text-align:center;padding:32px;color:#5f6368"><i class="bi bi-inbox" style="font-size:2rem;color:#dadce0;display:block;margin-bottom:8px"></i>Ainda nao existem versoes.</td></tr>
       <% } %>
-      <% details.forms.forEach(function(form){ %>
-        <li class="px-2 py-1 rounded-lg bg-slate-50 border border-slate-200"><%= form.nome %></li>
+      <% details.versions.forEach(function(version){ %>
+        <tr>
+          <td style="font-weight:600">v<%= version.versao %></td>
+          <td><span class="<%= version.status === 'PUBLICADO' || version.status === 'PUBLICADA' || version.status === 'ATIVO' ? 'wf-badge-green' : 'wf-badge-gray' %>"><%= version.status %></span></td>
+          <td><%= __fmtDateTime(version.publicado_em) %></td>
+          <td>
+            <a href="/processos/<%= details.process.id %>/modelar?versaoId=<%= version.id %>" class="wf-btn-secondary" style="padding:4px 12px;font-size:.8rem">
+              <i class="bi bi-diagram-3"></i> Modelador
+            </a>
+          </td>
+        </tr>
       <% }) %>
-    </ul>
-  </div>
+    </tbody>
+  </table>
+
+  <% if (canModel || canAdmin) { %>
+    <div style="padding:14px 18px;border-top:1px solid #e0e0e0">
+      <a href="/processos/<%= details.process.id %>/modelar" class="wf-btn-primary" style="font-size:.85rem">
+        <i class="bi bi-eye"></i> Abrir modelador
+      </a>
+    </div>
+  <% } %>
 </div>
 
-<div class="mt-4">
-  <a href="/processos/<%= details.process.id %>/modelar" class="px-4 py-2 rounded-xl bg-ciniBlue text-white inline-flex items-center gap-2">
-    <i class="bi bi-pencil-square"></i>
-    Abrir modelador BPMN
-  </a>
+<!-- Integracoes tab -->
+<div class="wf-panel" id="tab-integrations" style="border-radius:0 0 8px 8px;margin-top:0;display:none">
+  <h3 style="font-size:.95rem;font-weight:600;margin:0 0 14px;color:#202124">APIs e Integracoes</h3>
+
+  <div class="wf-indicator-grid" style="margin-bottom:16px">
+    <div class="wf-indicator-card wf-indicator-tone-blue" style="grid-column:span 2;min-width:0">
+      <p class="wf-indicator-label">Endpoint publico</p>
+      <p class="wf-indicator-note wf-indicator-mono" style="margin-top:6px">POST /api/public/processos/<%= details.process.codigo %>/start?key=...</p>
+    </div>
+
+    <div class="wf-indicator-card wf-indicator-tone-blue" style="grid-column:span 2;min-width:0">
+      <p class="wf-indicator-label">Chave API atual</p>
+      <p class="wf-indicator-note wf-indicator-mono" style="margin-top:6px"><%= details.apiConfig && details.apiConfig.public_api_key ? details.apiConfig.public_api_key : '-' %></p>
+    </div>
+
+    <div class="wf-indicator-card <%= details.apiConfig && details.apiConfig.allow_protheus ? 'wf-indicator-tone-green' : 'wf-indicator-tone-red' %>">
+      <p class="wf-indicator-label">Protheus</p>
+      <p class="wf-indicator-value <%= details.apiConfig && details.apiConfig.allow_protheus ? 'wf-indicator-value-status-on' : 'wf-indicator-value-status-off' %>">
+        <%= details.apiConfig && details.apiConfig.allow_protheus ? 'ON' : 'OFF' %>
+      </p>
+      <p class="wf-indicator-note">Integracao ERP</p>
+    </div>
+
+    <div class="wf-indicator-card <%= details.apiConfig && details.apiConfig.allow_mysql ? 'wf-indicator-tone-green' : 'wf-indicator-tone-red' %>">
+      <p class="wf-indicator-label">MySQL</p>
+      <p class="wf-indicator-value <%= details.apiConfig && details.apiConfig.allow_mysql ? 'wf-indicator-value-status-on' : 'wf-indicator-value-status-off' %>">
+        <%= details.apiConfig && details.apiConfig.allow_mysql ? 'ON' : 'OFF' %>
+      </p>
+      <p class="wf-indicator-note">Entrada por banco relacional</p>
+    </div>
+
+    <div class="wf-indicator-card <%= details.apiConfig && details.apiConfig.allow_external ? 'wf-indicator-tone-green' : 'wf-indicator-tone-red' %>">
+      <p class="wf-indicator-label">API externa</p>
+      <p class="wf-indicator-value <%= details.apiConfig && details.apiConfig.allow_external ? 'wf-indicator-value-status-on' : 'wf-indicator-value-status-off' %>">
+        <%= details.apiConfig && details.apiConfig.allow_external ? 'ON' : 'OFF' %>
+      </p>
+      <p class="wf-indicator-note">Consumo por sistemas terceiros</p>
+    </div>
+
+    <div class="wf-indicator-card wf-indicator-tone-amber">
+      <p class="wf-indicator-label">Versoes do processo</p>
+      <p class="wf-indicator-value" style="color:#e37400"><%= (details.versions || []).length %></p>
+      <p class="wf-indicator-note">Historico de versoes modeladas</p>
+    </div>
+  </div>
+
+  <% if (canAdmin) { %>
+    <button type="button" id="rotateApiKeyBtn" data-process-id="<%= details.process.id %>" class="wf-btn-danger" style="font-size:.85rem">
+      <i class="bi bi-arrow-clockwise"></i> Rotacionar chave API
+    </button>
+  <% } %>
 </div>
+
+<!-- Formularios tab -->
+<div class="wf-panel" id="tab-forms" style="border-radius:0 0 8px 8px;margin-top:0;display:none">
+  <h3 style="font-size:.95rem;font-weight:600;margin:0 0 14px;color:#202124">Formularios vinculados</h3>
+  <% if (!details.forms.length) { %>
+    <div style="text-align:center;padding:32px;color:#5f6368">
+      <i class="bi bi-ui-checks-grid" style="font-size:2rem;color:#dadce0;display:block;margin-bottom:8px"></i>
+      <p>Nenhum formulario cadastrado.</p>
+    </div>
+  <% } else { %>
+    <table class="wf-table" style="margin:0">
+      <thead><tr><th>Nome</th></tr></thead>
+      <tbody>
+        <% details.forms.forEach(function(form){ %>
+          <tr><td><%= form.nome %></td></tr>
+        <% }) %>
+      </tbody>
+    </table>
+  <% } %>
+</div>
+
+<!-- ECM tab -->
+<div class="wf-panel" id="tab-ecm" style="border-radius:0 0 8px 8px;margin-top:0;display:none">
+  <h3 style="font-size:.95rem;font-weight:600;margin:0 0 14px;color:#202124">Documentos (ECM)</h3>
+  <p style="font-size:.85rem;color:#5f6368;margin-bottom:16px">Cada usuario visualiza por padrao os proprios anexos. Administradores podem ver todos.</p>
+
+  <form id="ecmUploadForm" data-process-id="<%= details.process.id %>" style="display:flex;gap:8px;align-items:flex-end;margin-bottom:16px">
+    <div style="flex:1">
+      <label style="display:block;font-size:.82rem;font-weight:500;margin-bottom:4px;color:#202124">Selecionar arquivo</label>
+      <input type="file" name="arquivo" style="width:100%;padding:7px 10px;border:1px solid #dadce0;border-radius:6px;font-size:.88rem" />
+    </div>
+    <button type="submit" class="wf-btn-primary" style="padding:8px 16px"><i class="bi bi-upload"></i> Enviar</button>
+  </form>
+
+  <div id="ecmList" style="font-size:.88rem;color:#5f6368">Carregando anexos...</div>
+</div>
+
+<!-- Tab switching -->
+<script>
+(function() {
+  var tabs = ['versions','integrations','forms','ecm'];
+  document.querySelectorAll('.wf-tab[data-tab]').forEach(function(tab) {
+    tab.addEventListener('click', function(e) {
+      e.preventDefault();
+      document.querySelectorAll('.wf-tab[data-tab]').forEach(function(t){ t.classList.remove('active'); });
+      this.classList.add('active');
+      var target = this.getAttribute('data-tab');
+      tabs.forEach(function(id) {
+        var el = document.getElementById('tab-' + id);
+        if (el) el.style.display = (id === target) ? '' : 'none';
+      });
+    });
+  });
+})();
+</script>
 
 <%- include('../partials/shellEnd', {
   pageScript: '/workflow-assets/js/process-detail.js'

@@ -24,30 +24,43 @@
       };
 %>
 
-<div class="grid lg:grid-cols-3 gap-4">
-  <div class="wf-panel">
-    <h3 class="font-semibold mb-2">Resumo</h3>
-    <p class="text-sm text-slate-600">Processo: <strong><%= payload.process.nome %></strong></p>
-    <p class="text-sm text-slate-600">Instancias: <strong><%= payload.instances.length %></strong></p>
+<!-- Page header -->
+<div style="display:flex;align-items:center;gap:12px;margin-bottom:20px">
+  <a href="/processos/<%= payload.process.id %>" class="wf-btn-secondary" style="padding:6px 10px" title="Voltar"><i class="bi bi-arrow-left"></i></a>
+  <div>
+    <h2 style="margin:0;font-size:1.15rem;font-weight:600;color:#202124">Historico</h2>
+    <p style="margin:2px 0 0;font-size:.85rem;color:#5f6368"><%= payload.process.nome %> &bull; <%= payload.instances.length %> instancia(s)</p>
   </div>
+</div>
 
-  <div class="wf-panel lg:col-span-2">
-    <h3 class="font-semibold mb-3">Timeline</h3>
-    <div class="space-y-3 max-h-[520px] overflow-auto">
-      <% if (!payload.history.length) { %>
-        <p class="text-slate-500 text-sm">Ainda nao existem eventos para este processo.</p>
-      <% } %>
+<div class="wf-panel" style="padding:0">
+  <% if (!payload.history.length) { %>
+    <div style="text-align:center;padding:48px;color:#5f6368">
+      <i class="bi bi-clock-history" style="font-size:2.5rem;color:#dadce0;display:block;margin-bottom:8px"></i>
+      <p>Ainda nao existem eventos para este processo.</p>
+    </div>
+  <% } else { %>
+    <div class="wf-timeline" style="padding:20px">
       <% payload.history.forEach(function(item){ %>
-        <article class="p-3 rounded-xl border border-slate-200 bg-slate-50 text-sm">
-          <p class="font-semibold"><%= item.tipo_evento %></p>
-          <p class="text-xs text-slate-700"><%= item.descricao || '-' %></p>
-          <p class="text-xs text-slate-500 mt-1">
-            Instancia #<%= item.instancia_processo_id %> - <%= __fmtDateTime(item.created_at) %> - <%= item.executor || 'sistema' %>
-          </p>
-        </article>
+        <div class="wf-timeline-item">
+          <%
+            let dotColor = '#5f6368';
+            let dotIcon  = 'bi-circle-fill';
+            if (item.tipo_evento === 'TASK_COMPLETED') { dotColor = '#1e8e3e'; dotIcon = 'bi-check-circle-fill'; }
+            else if (item.tipo_evento === 'TASK_CREATED') { dotColor = '#1a73e8'; dotIcon = 'bi-plus-circle-fill'; }
+            else if (item.tipo_evento === 'STARTED') { dotColor = '#e8a817'; dotIcon = 'bi-play-circle-fill'; }
+            else if (item.tipo_evento === 'FINISHED') { dotColor = '#1e8e3e'; dotIcon = 'bi-flag-fill'; }
+          %>
+          <div class="wf-timeline-dot" style="color:<%= dotColor %>"><i class="bi <%= dotIcon %>"></i></div>
+          <div class="wf-timeline-content">
+            <strong><%= item.tipo_evento %></strong>
+            <p><%= item.descricao || '-' %></p>
+            <span style="font-size:.78rem;color:#80868b">Instancia #<%= item.instancia_processo_id %> &bull; <%= __fmtDateTime(item.created_at) %> &bull; <%= item.executor || 'sistema' %></span>
+          </div>
+        </div>
       <% }) %>
     </div>
-  </div>
+  <% } %>
 </div>
 
 <%- include('../partials/shellEnd', { pageScript: '' }) %>

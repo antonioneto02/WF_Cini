@@ -6,71 +6,83 @@
   breadcrumbs: [{ label: 'Formularios' }]
 }) %>
 
-<div class="grid lg:grid-cols-3 gap-4">
-  <div class="wf-panel lg:col-span-2">
-    <form id="formBuilder" class="grid gap-4">
-      <div class="grid md:grid-cols-2 gap-2">
+<!-- Page header -->
+<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+  <div>
+    <h2 style="font-size:1.25rem;font-weight:600;color:#202124;margin:0">Formularios</h2>
+    <p style="font-size:.85rem;color:#5f6368;margin:4px 0 0">Construa formularios dinamicos para vincular a processos</p>
+  </div>
+</div>
+
+<div style="display:grid;grid-template-columns:2fr 1fr;gap:16px">
+  <!-- Builder -->
+  <div class="wf-panel">
+    <form id="formBuilder" style="display:grid;gap:14px">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
         <div>
-          <label class="block text-sm font-semibold mb-1">Processo</label>
-          <select id="processoId" name="processoId" data-initial="<%= processoId || '' %>" required class="w-full px-3 py-2 rounded-xl border border-slate-300">
+          <label class="wf-form-label">Processo</label>
+          <select id="processoId" name="processoId" data-initial="<%= processoId || '' %>" required class="wf-form-input">
             <option value=""><%= processoId ? 'Selecionar processo...' : 'Carregando processos...' %></option>
           </select>
         </div>
         <div>
-          <label class="block text-sm font-semibold mb-1">Nome do formulario</label>
-          <input id="formNome" name="nome" required class="w-full px-3 py-2 rounded-xl border border-slate-300" placeholder="Ex: Solicitação de compra" />
+          <label class="wf-form-label">Nome do formulario</label>
+          <input id="formNome" name="nome" required class="wf-form-input" placeholder="Ex: Solicitacao de compra" />
         </div>
       </div>
 
-      <div class="wf-panel bg-slate-50 border border-slate-200">
-        <h4 class="font-semibold mb-2 text-sm">Paleta de campos</h4>
-        <p class="text-xs text-slate-500 mb-2">Arraste um tipo para a area de montagem.</p>
-        <div class="grid md:grid-cols-4 gap-2">
-          <button type="button" draggable="true" class="field-template px-3 py-2 rounded-lg border border-slate-300 bg-white text-sm" data-type="text">Texto</button>
-          <button type="button" draggable="true" class="field-template px-3 py-2 rounded-lg border border-slate-300 bg-white text-sm" data-type="number">Numero</button>
-          <button type="button" draggable="true" class="field-template px-3 py-2 rounded-lg border border-slate-300 bg-white text-sm" data-type="date">Data</button>
-          <button type="button" draggable="true" class="field-template px-3 py-2 rounded-lg border border-slate-300 bg-white text-sm" data-type="textarea">Textarea</button>
-          <button type="button" draggable="true" class="field-template px-3 py-2 rounded-lg border border-slate-300 bg-white text-sm" data-type="select">Select</button>
-          <button type="button" draggable="true" class="field-template px-3 py-2 rounded-lg border border-slate-300 bg-white text-sm" data-type="checkbox">Checkbox</button>
-          <button type="button" draggable="true" class="field-template px-3 py-2 rounded-lg border border-slate-300 bg-white text-sm" data-type="upload">Upload</button>
+      <fieldset style="border:1px solid #e0e0e0;border-radius:8px;padding:14px">
+        <legend style="font-size:.88rem;font-weight:600;color:#202124;padding:0 6px">Paleta de campos</legend>
+        <p style="font-size:.8rem;color:#5f6368;margin:0 0 10px">Arraste um tipo para a area de montagem.</p>
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px">
+          <button type="button" draggable="true" class="field-template wf-btn-secondary" style="font-size:.82rem" data-type="text">Texto</button>
+          <button type="button" draggable="true" class="field-template wf-btn-secondary" style="font-size:.82rem" data-type="number">Numero</button>
+          <button type="button" draggable="true" class="field-template wf-btn-secondary" style="font-size:.82rem" data-type="date">Data</button>
+          <button type="button" draggable="true" class="field-template wf-btn-secondary" style="font-size:.82rem" data-type="textarea">Textarea</button>
+          <button type="button" draggable="true" class="field-template wf-btn-secondary" style="font-size:.82rem" data-type="select">Select</button>
+          <button type="button" draggable="true" class="field-template wf-btn-secondary" style="font-size:.82rem" data-type="checkbox">Checkbox</button>
+          <button type="button" draggable="true" class="field-template wf-btn-secondary" style="font-size:.82rem" data-type="upload">Upload</button>
+        </div>
+      </fieldset>
+
+      <div style="border:2px dashed #dadce0;border-radius:8px;padding:14px;min-height:160px;background:#fafafa">
+        <h4 style="font-size:.88rem;font-weight:600;margin:0 0 10px;color:#202124">Area de montagem</h4>
+        <div id="formFieldDropzone">
+          <div id="formFieldList" style="display:grid;gap:8px"></div>
+          <p id="dropzoneHint" style="font-size:.8rem;color:#5f6368;margin:8px 0 0">Arraste campos para montar o formulario.</p>
         </div>
       </div>
 
-      <div class="wf-panel bg-white border border-slate-200">
-        <h4 class="font-semibold mb-2 text-sm">Area de montagem</h4>
-        <div id="formFieldDropzone" class="rounded-xl border-2 border-dashed border-slate-300 p-3 min-h-[160px]">
-          <div id="formFieldList" class="space-y-2"></div>
-          <p id="dropzoneHint" class="text-xs text-slate-500">Arraste campos para montar o formulario. A configuracao tecnica muda por tipo (texto, numero, checkbox, data, etc.).</p>
-        </div>
-      </div>
-
-      <div class="flex gap-2 justify-end">
-        <button type="button" id="cancelEditBtn" class="px-4 py-2 rounded-xl border border-slate-300 hidden">Cancelar edicao</button>
-        <button id="saveFormBtn" class="px-4 py-2 rounded-xl bg-ciniBlue text-white">Salvar formulario</button>
+      <div style="display:flex;gap:8px;justify-content:flex-end;padding-top:12px;border-top:1px solid #e0e0e0">
+        <button type="button" id="cancelEditBtn" class="wf-btn-secondary" style="display:none">Cancelar edicao</button>
+        <button id="saveFormBtn" type="submit" class="wf-btn-primary"><i class="bi bi-check-lg"></i> Salvar formulario</button>
       </div>
     </form>
 
-    <hr class="my-4 border-slate-200" />
-
-    <h3 class="font-semibold mb-2">Preview da estrutura</h3>
-    <pre id="schemaPreview" class="bg-slate-900 text-slate-100 p-3 rounded-xl text-xs overflow-auto max-h-[320px]"></pre>
+    <hr style="border:none;border-top:1px solid #e0e0e0;margin:16px 0" />
+    <h3 style="font-size:.95rem;font-weight:600;margin:0 0 10px;color:#202124">Preview da estrutura</h3>
+    <pre id="schemaPreview" style="background:#202124;color:#e8eaed;padding:14px;border-radius:8px;font-size:.8rem;overflow:auto;max-height:320px"></pre>
   </div>
 
-  <div class="wf-panel">
-    <h3 class="font-semibold mb-2">Formularios cadastrados</h3>
-    <div class="space-y-2 text-sm max-h-[520px] overflow-auto" id="formsList">
+  <!-- Sidebar: existing forms -->
+  <div class="wf-panel" style="align-self:start">
+    <h3 style="font-size:.95rem;font-weight:600;margin:0 0 12px;color:#202124">Formularios cadastrados</h3>
+    <div style="display:grid;gap:8px;max-height:520px;overflow:auto" id="formsList">
       <% forms.forEach(function(form){ %>
-        <article class="p-2 rounded-lg bg-slate-50 border border-slate-200" data-form-id="<%= form.id %>">
-          <p class="font-semibold"><%= form.nome %></p>
-          <p class="text-xs text-slate-500">Processo: <%= form.processo_nome || '-' %> (ID <%= form.processo_id %>)</p>
-          <div class="mt-2">
-            <button type="button" class="edit-form-btn px-2 py-1 rounded border border-cyan-300 text-cyan-700 text-xs" data-form-id="<%= form.id %>">Editar formulario</button>
-            <button type="button" class="delete-form-btn px-2 py-1 rounded border border-rose-300 text-rose-700 text-xs" data-form-id="<%= form.id %>" data-form-name="<%= form.nome %>">Excluir</button>
+        <div style="padding:10px;border:1px solid #e0e0e0;border-radius:6px;background:#fafafa" data-form-id="<%= form.id %>">
+          <p style="font-weight:500;margin:0 0 2px;font-size:.9rem"><%= form.nome %></p>
+          <p style="font-size:.78rem;color:#5f6368;margin:0 0 8px">Processo: <%= form.processo_nome || '-' %> (ID <%= form.processo_id %>)</p>
+          <div style="display:flex;gap:6px">
+            <button type="button" class="edit-form-btn wf-btn-secondary" style="padding:3px 10px;font-size:.78rem" data-form-id="<%= form.id %>"><i class="bi bi-pencil"></i> Editar</button>
+            <button type="button" class="delete-form-btn wf-btn-danger" style="padding:3px 10px;font-size:.78rem" data-form-id="<%= form.id %>" data-form-name="<%= form.nome %>"><i class="bi bi-trash"></i> Excluir</button>
           </div>
-        </article>
+        </div>
       <% }) %>
       <% if (!forms.length) { %>
-        <p class="text-slate-500">Nenhum formulario cadastrado.</p>
+        <div style="text-align:center;padding:24px;color:#5f6368">
+          <i class="bi bi-ui-checks-grid" style="font-size:1.5rem;color:#dadce0;display:block;margin-bottom:6px"></i>
+          <p style="margin:0;font-size:.85rem">Nenhum formulario cadastrado.</p>
+        </div>
       <% } %>
     </div>
   </div>

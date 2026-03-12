@@ -108,6 +108,7 @@ async function findUserByIdentifier(identifier) {
      WHERE UPPER(LTRIM(RTRIM(ISNULL([USR_ID], '')))) = :normalized
         OR UPPER(LTRIM(RTRIM(ISNULL([USR_CODIGO], '')))) = :normalized
         OR UPPER(LTRIM(RTRIM(ISNULL([USR_EMAIL], '')))) = :normalized
+        OR UPPER(LTRIM(RTRIM(ISNULL([USR_NOME], '')))) = :normalized
      ORDER BY USR_NOME ASC, USR_ID ASC`,
     { normalized }
   );

@@ -4,7 +4,6 @@ import gridModule from 'https://esm.sh/diagram-js-grid@0.2.0?bundle';
 
 const seedElement = document.getElementById('modelerSeed');
 const seed = seedElement ? JSON.parse(seedElement.textContent) : {};
-
 const defaultXml = `<?xml version="1.0" encoding="UTF-8"?>
 <bpmn:definitions xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
                   xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
@@ -73,6 +72,7 @@ function normalizeProperties(raw) {
 }
 
 const propsStore = normalizeProperties(seed.propriedades);
+const readOnlyMode = Boolean(seed.readOnly);
 
 const modeler = new BpmnModeler({
   container: '#bpmnCanvas',
@@ -95,13 +95,28 @@ const refs = {
   selectedElementId: document.getElementById('selectedElementId'),
   name: document.getElementById('propName'),
   taskType: document.getElementById('propTaskType'),
+  apiParamsSection: document.getElementById('apiParamsSection'),
+  apiEndpointPreview: document.getElementById('propApiEndpointPreview'),
+  apiParamCount: document.getElementById('propApiParamCount'),
+  apiParamsContainer: document.getElementById('propApiParamsContainer'),
+  automationExternalSection: document.getElementById('automationExternalSection'),
+  automationEndpoint: document.getElementById('propAutomationEndpoint'),
+  automationMethod: document.getElementById('propAutomationMethod'),
+  automationPayloadMap: document.getElementById('propAutomationPayloadMap'),
   responsible: document.getElementById('propResponsible'),
   responsibleId: document.getElementById('propResponsibleId'),
   responsibleList: document.getElementById('responsibleUsersList'),
   responsibleHint: document.getElementById('propResponsibleHint'),
+  managerUsersInput: document.getElementById('propManagerUsersInput'),
+  managerUsersList: document.getElementById('managerUsersList'),
+  managerUsersSelected: document.getElementById('propManagerUsersSelected'),
   sla: document.getElementById('propSla'),
   condition: document.getElementById('propCondition'),
   formId: document.getElementById('propFormId'),
+  automationId: document.getElementById('propAutomationId'),
+  dbQuery: document.getElementById('propDbQuery'),
+  ecmPolicy: document.getElementById('propEcmPolicy'),
+  managerUsers: document.getElementById('propManagerUsers'),
   applyProps: document.getElementById('btnApplyProps'),
   contextMenu: document.getElementById('modelerContextMenu'),
   flowInsertFab: document.getElementById('flowInsertFab'),
@@ -112,9 +127,17 @@ const formById = (seed.forms || []).reduce((acc, form) => {
   return acc;
 }, {});
 
+const automationById = (seed.automations || []).reduce((acc, item) => {
+  acc[String(item.id)] = item;
+  return acc;
+}, {});
+
 const responsibleLookup = new Map();
 let lastResponsibleResults = [];
 let responsibleSearchTimer = null;
+let lastManagerUsersResults = [];
+let managerUsersSearchTimer = null;
+let selectedManagerUsers = [];
 
 function setFieldValue(ref, value) {
   if (!ref) return;
@@ -130,14 +153,67 @@ function normalizeUserId(value) {
   return String(value || '').trim().toUpperCase();
 }
 
+function slugify(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+function parseAutomationPayloadMapInput(rawValue) {
+  const source = String(rawValue || '').trim();
+  if (!source) return [];
+
+  const entries = [];
+  const seen = new Set();
+  source
+    .split(/[;,\n\r]/g)
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .forEach((chunk) => {
+      const [leftRaw, rightRaw] = chunk.split(':');
+      const sourcePath = String(leftRaw || '').trim();
+      const targetPath = String(rightRaw || '').trim() || sourcePath;
+      if (!sourcePath) return;
+
+      const key = `${sourcePath.toLowerCase()}::${targetPath.toLowerCase()}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+
+      entries.push({
+        source: sourcePath,
+        target: targetPath,
+      });
+    });
+
+  return entries;
+}
+
+function formatAutomationPayloadMap(entries) {
+  if (!Array.isArray(entries) || !entries.length) return '';
+  return entries
+    .map((item) => {
+      const sourcePath = String((item && item.source) || '').trim();
+      const targetPath = String((item && item.target) || '').trim();
+      if (!sourcePath) return '';
+      if (!targetPath || targetPath === sourcePath) return sourcePath;
+      return `${sourcePath}:${targetPath}`;
+    })
+    .filter(Boolean)
+    .join(', ');
+}
+
 function hideResponsibleSuggestions() {
   if (!refs.responsibleList) return;
-  refs.responsibleList.classList.add('hidden');
+  refs.responsibleList.style.display = 'none';
 }
 
 function showResponsibleSuggestions() {
   if (!refs.responsibleList) return;
-  refs.responsibleList.classList.remove('hidden');
+  refs.responsibleList.style.display = 'block';
 }
 
 function updateResponsibleHintById(userId) {
@@ -156,6 +232,131 @@ function updateResponsibleHintById(userId) {
 
   const details = [user.nome || '', user.email || ''].filter(Boolean).join(' • ');
   setFieldText(refs.responsibleHint, details || `Responsavel selecionado: ${normalized}`);
+}
+
+function normalizeManagerUsers(value) {
+  const source = Array.isArray(value)
+    ? value
+    : String(value || '')
+        .split(/[;,\n\r]/g)
+        .map((item) => item.trim())
+        .filter(Boolean);
+
+  const unique = [];
+  const seen = new Set();
+  source.forEach((item) => {
+    const id = normalizeUserId(item);
+    if (!id) return;
+    if (seen.has(id)) return;
+    seen.add(id);
+    unique.push(id);
+  });
+  return unique;
+}
+
+function syncManagerUsersStorage() {
+  setFieldValue(refs.managerUsers, selectedManagerUsers.join(', '));
+}
+
+function renderManagerUsersSelected() {
+  if (!refs.managerUsersSelected) return;
+  refs.managerUsersSelected.innerHTML = '';
+
+  if (!selectedManagerUsers.length) {
+    const hint = document.createElement('span');
+    hint.style.fontSize = '.78rem';
+    hint.style.color = '#5f6368';
+    hint.textContent = 'Nenhum gestor selecionado';
+    refs.managerUsersSelected.appendChild(hint);
+    return;
+  }
+
+  selectedManagerUsers.forEach((id) => {
+    const user = responsibleLookup.get(id);
+    const chip = document.createElement('span');
+    chip.style.display = 'inline-flex';
+    chip.style.alignItems = 'center';
+    chip.style.gap = '6px';
+    chip.style.padding = '4px 8px';
+    chip.style.borderRadius = '999px';
+    chip.style.fontSize = '.78rem';
+    chip.style.background = '#e8f0fe';
+    chip.style.color = '#1a73e8';
+    chip.style.border = '1px solid #c7dafc';
+    chip.textContent = user && user.nome ? user.nome : id;
+
+    if (!readOnlyMode) {
+      const remove = document.createElement('button');
+      remove.type = 'button';
+      remove.textContent = 'x';
+      remove.style.border = '0';
+      remove.style.background = 'transparent';
+      remove.style.cursor = 'pointer';
+      remove.style.color = '#1a73e8';
+      remove.addEventListener('click', () => {
+        selectedManagerUsers = selectedManagerUsers.filter((item) => item !== id);
+        syncManagerUsersStorage();
+        renderManagerUsersSelected();
+      });
+      chip.appendChild(remove);
+    }
+
+    refs.managerUsersSelected.appendChild(chip);
+  });
+}
+
+function setManagerUsersSelection(value) {
+  selectedManagerUsers = normalizeManagerUsers(value);
+  syncManagerUsersStorage();
+  renderManagerUsersSelected();
+}
+
+function hideManagerUsersSuggestions() {
+  if (!refs.managerUsersList) return;
+  refs.managerUsersList.style.display = 'none';
+}
+
+function showManagerUsersSuggestions() {
+  if (!refs.managerUsersList) return;
+  refs.managerUsersList.style.display = 'block';
+}
+
+function renderManagerUsersList(users) {
+  if (!refs.managerUsersList) return;
+  refs.managerUsersList.innerHTML = '';
+  lastManagerUsersResults = users;
+
+  if (!users.length) {
+    const empty = document.createElement('div');
+    empty.className = 'px-3 py-2 text-xs text-slate-500';
+    empty.textContent = 'Nenhum usuario encontrado';
+    refs.managerUsersList.appendChild(empty);
+    showManagerUsersSuggestions();
+    return;
+  }
+
+  users.forEach((user) => {
+    const id = normalizeUserId(user.id);
+    if (!id) return;
+    responsibleLookup.set(id, user);
+
+    const item = document.createElement('button');
+    item.type = 'button';
+    item.className = 'w-full text-left px-3 py-2 hover:bg-slate-100 border-b border-slate-100 last:border-b-0';
+    item.innerHTML = `<p class="text-sm font-medium">${user.nome || id}</p><p class="text-xs text-slate-500">${id}${user.email ? ` • ${user.email}` : ''}</p>`;
+    item.addEventListener('click', () => {
+      if (!selectedManagerUsers.includes(id)) {
+        selectedManagerUsers.push(id);
+      }
+      setFieldValue(refs.managerUsersInput, '');
+      syncManagerUsersStorage();
+      renderManagerUsersSelected();
+      hideManagerUsersSuggestions();
+    });
+    refs.managerUsersList.appendChild(item);
+  });
+
+  showManagerUsersSuggestions();
 }
 
 function renderResponsibleList(users) {
@@ -298,6 +499,69 @@ async function resolveResponsibleDisplay(userId) {
   }
 }
 
+async function resolveManagerUsersDisplay(value) {
+  const ids = normalizeManagerUsers(value);
+  setManagerUsersSelection(ids);
+
+  for (const id of ids) {
+    if (responsibleLookup.has(id)) continue;
+
+    try {
+      // eslint-disable-next-line no-await-in-loop
+      const users = await searchResponsibleUsers(id);
+      const exact = users.find((user) => normalizeUserId(user.id) === id);
+      if (exact) {
+        responsibleLookup.set(id, exact);
+      }
+    } catch (_) {
+      // keep ID fallback when lookup fails
+    }
+  }
+
+  renderManagerUsersSelected();
+}
+
+function bindManagerUsersLookup() {
+  if (!refs.managerUsersInput) return;
+
+  refs.managerUsersInput.addEventListener('input', () => {
+    const term = refs.managerUsersInput.value.trim();
+
+    if (managerUsersSearchTimer) {
+      clearTimeout(managerUsersSearchTimer);
+      managerUsersSearchTimer = null;
+    }
+
+    if (term.length < 2) {
+      hideManagerUsersSuggestions();
+      return;
+    }
+
+    managerUsersSearchTimer = setTimeout(async () => {
+      try {
+        const users = await searchResponsibleUsers(term);
+        renderManagerUsersList(users);
+      } catch (error) {
+        WorkflowUI.showToast(error.message || 'Falha ao consultar gestores', 'error');
+      }
+    }, 220);
+  });
+
+  refs.managerUsersInput.addEventListener('focus', () => {
+    const term = refs.managerUsersInput.value.trim();
+    if (term.length >= 2 && lastManagerUsersResults.length) {
+      showManagerUsersSuggestions();
+    }
+  });
+
+  document.addEventListener('click', (event) => {
+    if (!refs.managerUsersList || !refs.managerUsersInput) return;
+    if (refs.managerUsersList.contains(event.target)) return;
+    if (refs.managerUsersInput === event.target) return;
+    hideManagerUsersSuggestions();
+  });
+}
+
 function ensureItemStore(elementId, isFlow) {
   if (isFlow) {
     if (!propsStore.flows[elementId]) propsStore.flows[elementId] = {};
@@ -313,6 +577,92 @@ function getStoreForElement(element) {
   const bo = element.businessObject;
   const isFlow = bo.$type === 'bpmn:SequenceFlow';
   return ensureItemStore(bo.id, isFlow);
+}
+
+function sanitizeParamCount(value) {
+  const numeric = Number(value || 0);
+  if (!Number.isFinite(numeric)) return 0;
+  return Math.max(0, Math.min(30, Math.floor(numeric)));
+}
+
+function collectApiParamValuesFromInputs() {
+  if (!refs.apiParamsContainer) return [];
+  const inputs = Array.from(refs.apiParamsContainer.querySelectorAll('input[data-api-param-index]'));
+  return inputs.map((input) => String(input.value || '').trim());
+}
+
+function renderApiParamInputs(count, currentValues) {
+  if (!refs.apiParamsContainer) return;
+
+  const safeCount = sanitizeParamCount(count);
+  const existingValues = Array.isArray(currentValues) ? currentValues : [];
+  refs.apiParamsContainer.innerHTML = '';
+
+  for (let index = 0; index < safeCount; index += 1) {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'grid gap-1';
+
+    const label = document.createElement('label');
+    label.className = 'text-xs font-semibold text-slate-700';
+    label.textContent = `Parametro ${index + 1}`;
+
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'w-full px-3 py-2 rounded-xl border border-slate-300';
+    input.placeholder = `Ex: parametro${index + 1}`;
+    input.dataset.apiParamIndex = String(index);
+    input.value = String(existingValues[index] || '').trim();
+    if (readOnlyMode) input.setAttribute('disabled', 'disabled');
+
+    wrapper.appendChild(label);
+    wrapper.appendChild(input);
+    refs.apiParamsContainer.appendChild(wrapper);
+  }
+}
+
+function shouldShowApiParamSection() {
+  const el = selected.element;
+  if (!el || !el.businessObject) return false;
+  if (el.businessObject.$type !== 'bpmn:ServiceTask') return false;
+  const selectedTaskType = String(refs.taskType && refs.taskType.value ? refs.taskType.value : '').toUpperCase();
+  return selectedTaskType === 'SERVICE';
+}
+
+function shouldShowAutomationExternalSection() {
+  const el = selected.element;
+  if (!el || !el.businessObject) return false;
+  if (el.businessObject.$type !== 'bpmn:ServiceTask') return false;
+  const selectedTaskType = String(refs.taskType && refs.taskType.value ? refs.taskType.value : '').toUpperCase();
+  return selectedTaskType === 'AUTOMATION';
+}
+
+function updateApiEndpointPreview() {
+  if (!refs.apiEndpointPreview) return;
+  if (!shouldShowApiParamSection()) {
+    setFieldValue(refs.apiEndpointPreview, '');
+    return;
+  }
+
+  const processCode = String(seed.processCode || '').trim();
+  const rawActivityName = refs.name && refs.name.value
+    ? refs.name.value
+    : (selected.element && selected.element.businessObject ? selected.element.businessObject.name || selected.element.id : 'atividade');
+  const activitySlug = slugify(rawActivityName) || 'atividade';
+  const origin = window.location && window.location.origin ? window.location.origin : '';
+  const endpoint = `${origin}/api/public/processos/${encodeURIComponent(processCode)}/atividades/${encodeURIComponent(activitySlug)}/start`;
+  setFieldValue(refs.apiEndpointPreview, endpoint);
+}
+
+function updateApiParamSectionVisibility() {
+  if (!refs.apiParamsSection) return;
+  const show = shouldShowApiParamSection();
+  refs.apiParamsSection.style.display = show ? 'block' : 'none';
+  updateApiEndpointPreview();
+}
+
+function updateAutomationSectionVisibility() {
+  if (!refs.automationExternalSection) return;
+  refs.automationExternalSection.style.display = shouldShowAutomationExternalSection() ? 'block' : 'none';
 }
 
 function clearContextMenu() {
@@ -331,12 +681,26 @@ function resetPropsPanel() {
   setFieldValue(refs.selectedElementId, '');
   setFieldValue(refs.name, '');
   setFieldValue(refs.taskType, 'USER');
+  setFieldValue(refs.apiParamCount, '0');
+  renderApiParamInputs(0, []);
+  setFieldValue(refs.apiEndpointPreview, '');
   setFieldValue(refs.responsible, '');
   setFieldValue(refs.responsibleId, '');
   setFieldValue(refs.sla, '');
   setFieldValue(refs.condition, '');
   setFieldValue(refs.formId, '');
+  setFieldValue(refs.automationId, '');
+  setFieldValue(refs.automationEndpoint, '');
+  setFieldValue(refs.automationMethod, 'POST');
+  setFieldValue(refs.automationPayloadMap, '');
+  setFieldValue(refs.dbQuery, '');
+  setFieldValue(refs.ecmPolicy, 'OWNER_ONLY');
+  setFieldValue(refs.managerUsersInput, '');
+  setManagerUsersSelection([]);
+  hideManagerUsersSuggestions();
   updateResponsibleHintById('');
+  updateApiParamSectionVisibility();
+  updateAutomationSectionVisibility();
 }
 
 function syncPanelFromSelection() {
@@ -348,17 +712,43 @@ function syncPanelFromSelection() {
 
   const bo = el.businessObject;
   const store = getStoreForElement(el) || {};
+  const inferredTaskType = bo.$type === 'bpmn:ServiceTask' ? 'SERVICE' : 'USER';
 
   setFieldValue(refs.selectedElementId, bo.id);
   setFieldValue(refs.name, bo.name || store.name || '');
-  setFieldValue(refs.taskType, store.taskType || 'USER');
+  setFieldValue(refs.taskType, store.taskType || inferredTaskType);
+  const apiParams = Array.isArray(store.apiParams)
+    ? store.apiParams.map((item) => {
+        if (typeof item === 'string') return item;
+        if (item && typeof item === 'object') return String(item.name || '').trim();
+        return '';
+      })
+    : [];
+  const apiParamCount = sanitizeParamCount(store.apiParamCount || apiParams.length || 0);
+  setFieldValue(refs.apiParamCount, String(apiParamCount));
+  renderApiParamInputs(apiParamCount, apiParams);
   resolveResponsibleDisplay(store.responsible || '');
   setFieldValue(refs.sla, store.sla || '');
   setFieldValue(refs.condition, store.condition || '');
   setFieldValue(refs.formId, store.formId || '');
+  setFieldValue(refs.automationId, store.automationId || '');
+  setFieldValue(refs.automationEndpoint, store.automationEndpoint || '');
+  setFieldValue(refs.automationMethod, store.automationMethod || 'POST');
+  setFieldValue(refs.automationPayloadMap, formatAutomationPayloadMap(store.automationPayloadMap));
+  setFieldValue(refs.dbQuery, store.dbQuery || '');
+  setFieldValue(refs.ecmPolicy, store.ecmPolicy || 'OWNER_ONLY');
+  setFieldValue(refs.managerUsersInput, '');
+  resolveManagerUsersDisplay(store.managerUsers || []);
+  updateApiParamSectionVisibility();
+  updateAutomationSectionVisibility();
 }
 
 function applyPropertiesFromPanel() {
+  if (readOnlyMode) {
+    WorkflowUI.showToast('Este usuario esta em modo somente leitura no modelador', 'warning');
+    return;
+  }
+
   const el = selected.element;
   if (!el || !el.businessObject) {
     WorkflowUI.showToast('Selecione um elemento para aplicar alteracoes', 'warning');
@@ -381,6 +771,50 @@ function applyPropertiesFromPanel() {
   store.sla = refs.sla ? refs.sla.value.trim() : '';
   store.condition = refs.condition ? refs.condition.value.trim() : '';
   store.formId = refs.formId && refs.formId.value ? Number(refs.formId.value) : null;
+  store.automationId = refs.automationId && refs.automationId.value ? Number(refs.automationId.value) : null;
+  store.automationEndpoint = refs.automationEndpoint ? refs.automationEndpoint.value.trim() : '';
+  store.automationMethod = refs.automationMethod ? refs.automationMethod.value : 'POST';
+  store.automationPayloadMap = parseAutomationPayloadMapInput(refs.automationPayloadMap ? refs.automationPayloadMap.value : '');
+  store.dbQuery = refs.dbQuery ? refs.dbQuery.value.trim() : '';
+  store.ecmPolicy = refs.ecmPolicy ? refs.ecmPolicy.value : 'OWNER_ONLY';
+  const typedManager = refs.managerUsersInput ? refs.managerUsersInput.value.trim() : '';
+  if (typedManager) {
+    WorkflowUI.showToast('Selecione o gestor na lista de sugestoes por nome.', 'warning');
+    return;
+  }
+  store.managerUsers = Array.isArray(selectedManagerUsers) ? [...selectedManagerUsers] : [];
+
+  if (shouldShowApiParamSection()) {
+    const apiParamCount = sanitizeParamCount(refs.apiParamCount ? refs.apiParamCount.value : 0);
+    const apiParamValues = collectApiParamValuesFromInputs();
+    const selectedNames = apiParamValues.slice(0, apiParamCount).map((value) => String(value || '').trim());
+
+    if (apiParamCount > 0 && selectedNames.some((name) => !name)) {
+      WorkflowUI.showToast('Preencha o nome de todos os parametros da API.', 'warning');
+      return;
+    }
+
+    const seen = new Set();
+    for (const name of selectedNames) {
+      const key = name.toLowerCase();
+      if (seen.has(key)) {
+        WorkflowUI.showToast('Nao repita nomes de parametros da API na mesma tarefa.', 'warning');
+        return;
+      }
+      seen.add(key);
+    }
+
+    store.apiParamCount = apiParamCount;
+    store.apiParams = selectedNames.map((name) => ({ name }));
+  } else {
+    store.apiParamCount = 0;
+    store.apiParams = [];
+  }
+
+  if (shouldShowAutomationExternalSection() && !store.automationEndpoint && !store.automationId) {
+    WorkflowUI.showToast('Informe o endpoint da automacao externa ou selecione uma automacao cadastrada.', 'warning');
+    return;
+  }
 
   const name = refs.name ? refs.name.value.trim() : '';
   store.name = name;
@@ -493,7 +927,40 @@ function handleConnectModeClick(element) {
   return true;
 }
 
-function addElementFromTool(type) {
+function applyEnterprisePreset(element, enterpriseKind) {
+  if (!enterpriseKind || !element || !element.businessObject) return;
+  const store = ensureItemStore(element.businessObject.id, false);
+
+  if (enterpriseKind === 'ECM') {
+    store.taskType = 'ECM';
+    store.ecmPolicy = 'OWNER_ONLY';
+  }
+
+  if (enterpriseKind === 'DATABASE') {
+    store.taskType = 'DB';
+    store.dbQuery = store.dbQuery || 'SELECT TOP 1 1 AS ok';
+  }
+
+  if (enterpriseKind === 'MANAGER') {
+    store.taskType = 'MANAGER';
+    store.managerUsers = store.managerUsers || [];
+  }
+
+  if (enterpriseKind === 'AUTOMATION') {
+    store.taskType = 'AUTOMATION';
+    const automationIds = Object.keys(automationById || {});
+    if (automationIds.length && !store.automationId) {
+      store.automationId = Number(automationIds[0]);
+    }
+  }
+}
+
+function addElementFromTool(type, enterpriseKind = '') {
+  if (readOnlyMode) {
+    WorkflowUI.showToast('Modelador em modo somente leitura', 'warning');
+    return;
+  }
+
   if (type === 'bpmn:SequenceFlow') {
     activateConnectMode();
     return;
@@ -520,10 +987,18 @@ function addElementFromTool(type) {
   }
 
   selected.element = newShape;
+
+  if (!enterpriseKind && type === 'bpmn:ServiceTask') {
+    const store = ensureItemStore(newShape.id, false);
+    if (!store.taskType) store.taskType = 'SERVICE';
+  }
+
+  applyEnterprisePreset(newShape, enterpriseKind);
   syncPanelFromSelection();
 }
 
 function duplicateElement(element) {
+  if (readOnlyMode) return;
   if (!element || !element.businessObject || element.businessObject.$type === 'bpmn:SequenceFlow') return;
   const modeling = modeler.get('modeling');
   const duplicated = modeling.createShape(
@@ -542,6 +1017,7 @@ function duplicateElement(element) {
 }
 
 function addElementAfterSelected(type) {
+  if (readOnlyMode) return;
   const element = selected.element;
   if (!element || !element.businessObject) return;
 
@@ -577,12 +1053,12 @@ function getFlowMidpoint(flow) {
 }
 
 function insertElementOnFlow(flow, type) {
+  if (readOnlyMode) return;
   if (!flow || !flow.source || !flow.target) return;
 
   const modeling = modeler.get('modeling');
   const midpoint = getFlowMidpoint(flow);
   const parent = flow.source.parent || flow.parent;
-
   const newShape = modeling.createShape(createShapeByType(type), midpoint, parent);
 
   try {
@@ -599,6 +1075,12 @@ function insertElementOnFlow(flow, type) {
 }
 
 function handleContextAction(action) {
+  if (readOnlyMode) {
+    WorkflowUI.showToast('Acao indisponivel em modo somente leitura', 'warning');
+    clearContextMenu();
+    return;
+  }
+
   const element = selected.element;
   if (!element) return;
   const directEditing = modeler.get('directEditing');
@@ -638,7 +1120,11 @@ function handleContextAction(action) {
   clearContextMenu();
 }
 
-function getIconForType(type, hasForm) {
+function getIconForType(type, hasForm, store) {
+  if (store && store.taskType === 'ECM') return '<i class="bi bi-folder2-open"></i>';
+  if (store && store.taskType === 'DB') return '<i class="bi bi-database"></i>';
+  if (store && store.taskType === 'AUTOMATION') return '<i class="bi bi-robot"></i>';
+  if (store && store.taskType === 'MANAGER') return '<i class="bi bi-person-badge"></i>';
   if (hasForm) return '<i class="bi bi-ui-checks-grid"></i>';
   if (type === 'bpmn:UserTask') return '<i class="bi bi-person"></i>';
   if (type === 'bpmn:ExclusiveGateway' || type === 'bpmn:ParallelGateway') return '<i class="bi bi-sign-intersection"></i>';
@@ -657,7 +1143,7 @@ function renderTypeOverlays() {
     const type = element.businessObject.$type;
     const store = propsStore.elements[element.id] || {};
     const hasForm = Boolean(store.formId && formById[String(store.formId)]);
-    const icon = getIconForType(type, hasForm);
+    const icon = getIconForType(type, hasForm, store);
     if (!icon) return;
 
     const html = document.createElement('div');
@@ -677,7 +1163,6 @@ function positionFlowInsertFab(flow) {
   const canvas = modeler.get('canvas');
   const midpoint = getFlowMidpoint(flow);
   const viewbox = canvas.viewbox();
-
   const canvasEl = document.getElementById('bpmnCanvas');
   if (!canvasEl) return;
 
@@ -705,7 +1190,6 @@ function validateDiagram() {
   const endEvents = elements.filter((e) => e.businessObject.$type === 'bpmn:EndEvent');
   const userTasks = elements.filter((e) => e.businessObject.$type === 'bpmn:UserTask');
   const serviceTasks = elements.filter((e) => e.businessObject.$type === 'bpmn:ServiceTask');
-
   const errors = [];
   if (!startEvents.length) errors.push('O processo precisa ter ao menos um Evento inicial.');
   if (!endEvents.length) errors.push('O processo precisa ter ao menos um Evento final.');
@@ -722,6 +1206,11 @@ function validateDiagram() {
 }
 
 async function saveVersion() {
+  if (readOnlyMode) {
+    WorkflowUI.showToast('Sem permissao para salvar versao neste processo', 'warning');
+    return;
+  }
+
   const validationErrors = validateDiagram();
   if (validationErrors.length) {
     WorkflowUI.showToast('Validacao falhou. Veja os detalhes no alerta.', 'warning');
@@ -740,6 +1229,7 @@ async function saveVersion() {
       body: JSON.stringify({
         bpmnXml: xml,
         propriedadesJson: JSON.stringify(propsStore),
+        originHost: window.location && window.location.origin ? window.location.origin : '',
       }),
     });
 
@@ -748,7 +1238,7 @@ async function saveVersion() {
       throw new Error(data.message || 'Erro ao salvar nova versao');
     }
 
-    WorkflowUI.showToast(`Versao v${data.versao} salva com sucesso`, 'success');
+    WorkflowUI.showToast(`Versao v${data.versao} salva e publicada com sucesso`, 'success');
     setTimeout(() => {
       window.location.href = `/processos/${seed.processoId}`;
     }, 700);
@@ -767,7 +1257,6 @@ function bindToolbarButtons() {
   }
 
   bindClick('btnSaveVersion', saveVersion);
-
   bindClick('btnZoomIn', () => {
     const canvas = modeler.get('canvas');
     const current = canvas.zoom();
@@ -785,14 +1274,17 @@ function bindToolbarButtons() {
   });
 
   bindClick('btnUndo', () => {
+    if (readOnlyMode) return;
     modeler.get('commandStack').undo();
   });
 
   bindClick('btnRedo', () => {
+    if (readOnlyMode) return;
     modeler.get('commandStack').redo();
   });
 
   bindClick('btnAlign', () => {
+    if (readOnlyMode) return;
     const selectedElements = modeler.get('selection').get();
     if (selectedElements.length < 2) {
       WorkflowUI.showToast('Selecione pelo menos 2 elementos para alinhar', 'warning');
@@ -810,11 +1302,19 @@ function bindToolbarButtons() {
 }
 
 function bindToolbox() {
+  if (readOnlyMode) {
+    document.querySelectorAll('.wf-toolbox-item').forEach((button) => {
+      button.setAttribute('disabled', 'disabled');
+      button.classList.add('wf-toolbox-item-disabled');
+    });
+    return;
+  }
+
   document.querySelectorAll('.wf-toolbox-item').forEach((button) => {
     button.addEventListener('click', () => {
       const type = button.dataset.toolType;
       if (!type) return;
-      addElementFromTool(type);
+      addElementFromTool(type, button.dataset.enterpriseKind || '');
     });
   });
 }
@@ -874,7 +1374,6 @@ function bindModelerEvents() {
     const selectedElement = event.newSelection && event.newSelection.length ? event.newSelection[0] : null;
     selected.element = selectedElement;
     syncPanelFromSelection();
-
     if (selectedElement && selectedElement.businessObject && selectedElement.businessObject.$type === 'bpmn:SequenceFlow') {
       positionFlowInsertFab(selectedElement);
     } else {
@@ -907,12 +1406,40 @@ function bindModelerEvents() {
 function bindPropertyActions() {
   if (!refs.applyProps) return;
   refs.applyProps.addEventListener('click', applyPropertiesFromPanel);
+
+  if (refs.taskType) {
+    refs.taskType.addEventListener('change', () => {
+      updateApiParamSectionVisibility();
+      updateAutomationSectionVisibility();
+      if (!shouldShowApiParamSection()) return;
+      const keepValues = collectApiParamValuesFromInputs();
+      renderApiParamInputs(refs.apiParamCount ? refs.apiParamCount.value : 0, keepValues);
+    });
+  }
+
+  if (refs.name) {
+    refs.name.addEventListener('input', updateApiEndpointPreview);
+  }
+
+  if (refs.apiParamCount) {
+    refs.apiParamCount.addEventListener('input', () => {
+      const currentValues = collectApiParamValuesFromInputs();
+      const safeCount = sanitizeParamCount(refs.apiParamCount.value);
+      setFieldValue(refs.apiParamCount, String(safeCount));
+      renderApiParamInputs(safeCount, currentValues);
+    });
+  }
 }
 
 async function bootstrap() {
   const xml = seed.bpmnXml || defaultXml;
   await modeler.importXML(xml);
   modeler.get('canvas').zoom('fit-viewport');
+  resetPropsPanel();
+
+  if (readOnlyMode) {
+    WorkflowUI.showToast('Modelador aberto em modo somente leitura', 'info');
+  }
 
   bindToolbarButtons();
   bindToolbox();
@@ -921,7 +1448,7 @@ async function bootstrap() {
   bindModelerEvents();
   bindPropertyActions();
   bindResponsibleLookup();
-
+  bindManagerUsersLookup();
   renderTypeOverlays();
 }
 
@@ -929,3 +1456,4 @@ bootstrap().catch((error) => {
   console.error(error);
   WorkflowUI.showToast('Erro ao carregar modelador BPMN', 'error');
 });
+

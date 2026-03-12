@@ -22,13 +22,14 @@ function normalizeSql(rawSql) {
     .replace(/:([a-zA-Z_][a-zA-Z0-9_]*)/g, '@$1');
 }
 
-async function query(rawSql, params = {}) {
-  const pool = await getPool();
-  const request = pool.request();
-
+function bindInputs(request, params = {}) {
   Object.entries(params).forEach(([name, value]) => {
     request.input(name, value === undefined ? null : value);
   });
+}
+
+async function runStatement(request, rawSql, params = {}) {
+  bindInputs(request, params);
 
   const sqlText = normalizeSql(rawSql);
   const isInsert = /^\s*INSERT\b/i.test(sqlText);
@@ -53,6 +54,36 @@ async function query(rawSql, params = {}) {
   return result.recordset || [];
 }
 
+async function query(rawSql, params = {}) {
+  const pool = await getPool();
+  return runStatement(pool.request(), rawSql, params);
+}
+
+async function withTransaction(work) {
+  if (typeof work !== 'function') {
+    throw new Error('work deve ser uma funcao para transacao');
+  }
+
+  const pool = await getPool();
+  const transaction = new sql.Transaction(pool);
+  await transaction.begin();
+
+  const txQuery = (rawSql, params = {}) => runStatement(new sql.Request(transaction), rawSql, params);
+
+  try {
+    const payload = await work({ query: txQuery });
+    await transaction.commit();
+    return payload;
+  } catch (error) {
+    try {
+      await transaction.rollback();
+    } catch (_) {
+      // noop
+    }
+    throw error;
+  }
+}
+
 async function close() {
   if (poolPromise) {
     const pool = await poolPromise;
@@ -64,5 +95,6 @@ async function close() {
 module.exports = {
   getPool,
   query,
+  withTransaction,
   close,
 };

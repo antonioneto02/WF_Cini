@@ -6,31 +6,36 @@
   breadcrumbs: [{ label: 'Administracao BPM' }]
 }) %>
 
-<div class="grid md:grid-cols-4 gap-4">
-  <article class="wf-panel">
-    <p class="text-sm text-slate-500">Processos</p>
-    <p class="text-3xl font-bold"><%= stats.processos %></p>
-  </article>
-  <article class="wf-panel">
-    <p class="text-sm text-slate-500">Tarefas</p>
-    <p class="text-3xl font-bold"><%= stats.tarefas %></p>
-  </article>
-  <article class="wf-panel">
-    <p class="text-sm text-slate-500">Solicitacoes</p>
-    <p class="text-3xl font-bold"><%= stats.solicitacoes %></p>
-  </article>
-  <article class="wf-panel">
-    <p class="text-sm text-slate-500">Formularios</p>
-    <p class="text-3xl font-bold"><%= stats.formularios %></p>
-  </article>
+<!-- KPI row -->
+<div class="wf-kpi-row">
+  <div class="wf-kpi-card">
+    <div class="wf-kpi-icon" style="background:#e8f0fe;color:#1a73e8"><i class="bi bi-diagram-3"></i></div>
+    <div><span class="wf-kpi-value"><%= stats.processos %></span><span class="wf-kpi-label">Processos</span></div>
+  </div>
+  <div class="wf-kpi-card">
+    <div class="wf-kpi-icon" style="background:#fef7cd;color:#e8a817"><i class="bi bi-check2-square"></i></div>
+    <div><span class="wf-kpi-value"><%= stats.tarefas %></span><span class="wf-kpi-label">Tarefas</span></div>
+  </div>
+  <div class="wf-kpi-card">
+    <div class="wf-kpi-icon" style="background:#e8f0fe;color:#1a73e8"><i class="bi bi-file-earmark-text"></i></div>
+    <div><span class="wf-kpi-value"><%= stats.solicitacoes %></span><span class="wf-kpi-label">Solicitacoes</span></div>
+  </div>
+  <div class="wf-kpi-card">
+    <div class="wf-kpi-icon" style="background:#f3e8fd;color:#8430ce"><i class="bi bi-ui-checks-grid"></i></div>
+    <div><span class="wf-kpi-value"><%= stats.formularios %></span><span class="wf-kpi-label">Formularios</span></div>
+  </div>
 </div>
 
-<div class="wf-panel mt-4">
-  <h3 class="font-semibold mb-2">Acoes rapidas</h3>
-  <div class="flex gap-2 flex-wrap">
-    <a href="/processos/novo" class="px-3 py-2 rounded-xl border border-slate-300">Novo processo</a>
-    <a href="/formularios/construtor" class="px-3 py-2 rounded-xl border border-slate-300">Novo formulario</a>
-    <a href="/processos" class="px-3 py-2 rounded-xl border border-slate-300">Abrir modelador</a>
+<div class="wf-panel" style="margin-top:16px">
+  <h3 style="font-size:.95rem;font-weight:600;margin:0 0 12px;color:#202124">Acoes rapidas</h3>
+  <div style="display:flex;gap:8px;flex-wrap:wrap">
+    <a href="/processos/novo" class="wf-btn-secondary"><i class="bi bi-plus-lg"></i> Novo processo</a>
+    <a href="/formularios/construtor" class="wf-btn-secondary"><i class="bi bi-ui-checks-grid"></i> Novo formulario</a>
+    <a href="/processos" class="wf-btn-secondary"><i class="bi bi-diagram-3"></i> Abrir modelador</a>
+    <a href="/automacoes" class="wf-btn-secondary"><i class="bi bi-lightning-charge"></i> Catalogo de automacoes</a>
+    <% if (user && user.isDev) { %>
+      <a href="/bpm/dev/apis" class="wf-btn-secondary"><i class="bi bi-code-slash"></i> Modo Dev APIs</a>
+    <% } %>
   </div>
 </div>
 

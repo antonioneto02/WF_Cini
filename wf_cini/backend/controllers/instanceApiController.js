@@ -1,19 +1,22 @@
 const bpmEngineService = require('../services/bpmEngineService');
 const instanceRepository = require('../repositories/instanceRepository');
-
-function currentUser(req) {
-  return (req.session && req.session.username) || (req.cookies && req.cookies.username) || 'sistema';
-}
+const accessService = require('../services/accessService');
+const { getCurrentUser } = require('../utils/requestUser');
 
 async function start(req, res, next) {
   try {
     const processoId = Number(req.body.processoId);
     const payload = req.body.payload || {};
+    const user = getCurrentUser(req);
+    const canExecute = await accessService.canUser(processoId, user, 'execute');
+    if (!canExecute) {
+      return res.status(403).json({ ok: false, message: 'Sem permissao para iniciar este processo' });
+    }
 
     const instance = await bpmEngineService.startInstance({
       processoId,
       payload,
-      solicitante: currentUser(req),
+      solicitante: user,
     });
 
     return res.status(201).json(instance);
@@ -24,6 +27,7 @@ async function start(req, res, next) {
 
 async function list(req, res, next) {
   try {
+    const user = getCurrentUser(req);
     const result = await instanceRepository.listInstances({
       page: req.query.page || 1,
       pageSize: req.query.pageSize || 10,
@@ -31,7 +35,18 @@ async function list(req, res, next) {
       status: req.query.status || null,
     });
 
-    return res.json(result);
+    const visible = [];
+    for (const row of result.data) {
+      // eslint-disable-next-line no-await-in-loop
+      const canView = await accessService.canUser(row.processo_id, user, 'view');
+      if (canView) visible.push(row);
+    }
+
+    return res.json({
+      ...result,
+      data: visible,
+      total: visible.length,
+    });
   } catch (err) {
     return next(err);
   }

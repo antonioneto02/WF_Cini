@@ -3,12 +3,72 @@ const formRepository = require('../repositories/formRepository');
 const historyRepository = require('../repositories/historyRepository');
 const instanceRepository = require('../repositories/instanceRepository');
 const { parseXml, buildGraph } = require('./bpmnParserService');
+const accessService = require('./accessService');
+const processApiCatalogService = require('./processApiCatalogService');
+const processApiDefinitionService = require('./processApiDefinitionService');
+const automationService = require('./automationService');
+const notificationService = require('./notificationService');
+const { buildProgressFromVersion } = require('./processProgressService');
 
 async function listProcesses(query) {
-  return processRepository.listProcesses(query || {});
+  const safeQuery = query || {};
+  const result = await processRepository.listProcesses(safeQuery);
+
+  let data = result.data || [];
+  if (safeQuery.user) {
+    data = await accessService.filterVisibleProcesses(data, safeQuery.user);
+  }
+
+  const enriched = [];
+  for (const item of data) {
+    let progress = {
+      steps: [],
+      current_element_id: item.latest_current_element_id || null,
+      is_completed: String(item.latest_instance_status || '').toUpperCase() === 'CONCLUIDA',
+      summary_text: String(item.latest_instance_status || '').toUpperCase() === 'CONCLUIDA' ? 'Concluido' : 'Fluxo sem execucao ativa',
+    };
+    const versionId = item.latest_instance_version_id || item.versao_id;
+    if (versionId) {
+      try {
+        // eslint-disable-next-line no-await-in-loop
+        const version = await processRepository.getVersionById(versionId);
+        if (version && version.bpmn_xml) {
+          // eslint-disable-next-line no-await-in-loop
+          progress = await buildProgressFromVersion({
+            bpmnXml: version.bpmn_xml,
+            propriedadesJson: version.propriedades_json,
+            currentElementId: item.latest_current_element_id || null,
+            instanceStatus: item.latest_instance_status || null,
+          });
+        }
+      } catch (_) {
+        progress = {
+          steps: [],
+          current_element_id: item.latest_current_element_id || null,
+          is_completed: String(item.latest_instance_status || '').toUpperCase() === 'CONCLUIDA',
+          summary_text: String(item.latest_instance_status || '').toUpperCase() === 'CONCLUIDA' ? 'Concluido' : 'Fluxo sem execucao ativa',
+        };
+      }
+    }
+
+    enriched.push({
+      ...item,
+      progress,
+      can_edit: safeQuery.user ? await accessService.canUser(item.id, safeQuery.user, 'edit') : true,
+      can_model: safeQuery.user ? await accessService.canUser(item.id, safeQuery.user, 'model') : true,
+      can_admin: safeQuery.user ? await accessService.canUser(item.id, safeQuery.user, 'admin') : true,
+      can_execute: safeQuery.user ? await accessService.canUser(item.id, safeQuery.user, 'execute') : true,
+    });
+  }
+
+  return {
+    ...result,
+    data: enriched,
+    total: safeQuery.user ? enriched.length : result.total,
+  };
 }
 
-async function createProcess({ nome, codigo, descricao, createdBy }) {
+async function createProcess({ nome, codigo, descricao, permissions, createdBy }) {
   if (!nome) {
     throw new Error('Nome do processo e obrigatorio');
   }
@@ -57,7 +117,26 @@ async function createProcess({ nome, codigo, descricao, createdBy }) {
     criadoPor: createdBy || null,
   });
 
-  return processRepository.getProcessById(processId);
+  const assignedPermissions = await accessService.setProcessPermissions({
+    processoId: processId,
+    config: permissions || {},
+    actor: createdBy || null,
+  });
+
+  await processApiCatalogService.ensureProcessApiConfig(processId, createdBy || null);
+
+  const createdProcess = await processRepository.getProcessById(processId);
+
+  await notificationService.notifyProcessUserAssignments({
+    processId,
+    processName: createdProcess ? createdProcess.nome : nome,
+    processCode: createdProcess ? createdProcess.codigo : finalCodigo,
+    actor: createdBy || null,
+    currentPermissions: assignedPermissions,
+    previousPermissions: [],
+  });
+
+  return createdProcess;
 }
 
 async function getProcessDetails(processoId) {
@@ -66,15 +145,26 @@ async function getProcessDetails(processoId) {
 
   const versions = await processRepository.listVersionsByProcess(processoId);
   const forms = await formRepository.listForms({ processId: processoId, page: 1, pageSize: 100 });
+  const instances = await instanceRepository.listInstances({ processoId, page: 1, pageSize: 1 });
+  const latestInstance = instances && Array.isArray(instances.data) && instances.data.length
+    ? instances.data[0]
+    : null;
+  const acl = await accessService.getAcl(processoId);
+  const apiConfig = await processApiCatalogService.ensureProcessApiConfig(processoId, process.created_by || 'sistema');
 
   return {
     process,
     versions,
     forms: forms.data,
+    hasStarted: Number(instances.total || 0) > 0,
+    latestInstance,
+    totalInstances: Number(instances.total || 0),
+    acl,
+    apiConfig,
   };
 }
 
-async function updateProcess({ processoId, nome, descricao, status, updatedBy }) {
+async function updateProcess({ processoId, nome, descricao, status, permissions, updatedBy }) {
   const current = await processRepository.getProcessById(processoId);
   if (!current) throw new Error('Processo nao encontrado');
   if (!nome || !nome.trim()) throw new Error('Nome do processo e obrigatorio');
@@ -86,6 +176,24 @@ async function updateProcess({ processoId, nome, descricao, status, updatedBy })
     status: status || current.status || 'ATIVO',
     updatedBy: updatedBy || null,
   });
+
+  if (permissions) {
+    const previousPermissions = await accessService.getAcl(processoId);
+    const assignedPermissions = await accessService.setProcessPermissions({
+      processoId,
+      config: permissions,
+      actor: updatedBy || null,
+    });
+
+    await notificationService.notifyProcessUserAssignments({
+      processId: processoId,
+      processName: nome.trim(),
+      processCode: current.codigo,
+      actor: updatedBy || null,
+      currentPermissions: assignedPermissions,
+      previousPermissions,
+    });
+  }
 
   return processRepository.getProcessById(processoId);
 }
@@ -129,6 +237,81 @@ async function getProcessHistory(processoId) {
   };
 }
 
+async function getProcessInstancesLine({ processoId, page = 1, pageSize = 100, status = null }) {
+  const process = await processRepository.getProcessById(processoId);
+  if (!process) throw new Error('Processo nao encontrado');
+
+  const instances = await instanceRepository.listInstances({
+    processoId,
+    page,
+    pageSize,
+    status,
+  });
+
+  const stats = await instanceRepository.getProcessInstanceStats(processoId);
+
+  const versionsCache = new Map();
+  const enrichedInstances = [];
+
+  for (const instance of instances.data || []) {
+    const versionId = Number(instance.versao_processo_id || 0) || null;
+
+    if (versionId && !versionsCache.has(versionId)) {
+      // eslint-disable-next-line no-await-in-loop
+      const version = await processRepository.getVersionById(versionId);
+      versionsCache.set(versionId, version || null);
+    }
+
+    const version = versionId ? versionsCache.get(versionId) : null;
+
+    let progress = {
+      steps: [],
+      current_element_id: instance.current_element_id || null,
+      is_completed: String(instance.status || '').toUpperCase() === 'CONCLUIDA',
+      summary_text: String(instance.status || '').toUpperCase() === 'CONCLUIDA' ? 'Concluido' : 'Fluxo sem mapeamento',
+    };
+
+    if (version && version.bpmn_xml) {
+      try {
+        // eslint-disable-next-line no-await-in-loop
+        progress = await buildProgressFromVersion({
+          bpmnXml: version.bpmn_xml,
+          propriedadesJson: version.propriedades_json,
+          currentElementId: instance.current_element_id || null,
+          instanceStatus: instance.status || null,
+        });
+      } catch (_) {
+        progress = {
+          steps: [],
+          current_element_id: instance.current_element_id || null,
+          is_completed: String(instance.status || '').toUpperCase() === 'CONCLUIDA',
+          summary_text: String(instance.status || '').toUpperCase() === 'CONCLUIDA' ? 'Concluido' : 'Fluxo sem mapeamento',
+        };
+      }
+    }
+
+    enrichedInstances.push({
+      ...instance,
+      progress,
+    });
+  }
+
+  const total = Number(stats.total || 0);
+  const concluidas = Number(stats.concluidas || 0);
+
+  return {
+    process,
+    summary: {
+      ...stats,
+      taxa_sucesso: total > 0 ? Math.round((concluidas / total) * 100) : 0,
+    },
+    result: {
+      ...instances,
+      data: enrichedInstances,
+    },
+  };
+}
+
 async function getModelerPayload(processoId, versaoId = null) {
   const process = await processRepository.getProcessById(processoId);
   if (!process) throw new Error('Processo nao encontrado');
@@ -143,11 +326,13 @@ async function getModelerPayload(processoId, versaoId = null) {
   }
 
   const forms = await formRepository.listForms({ processId: processoId, page: 1, pageSize: 100 });
+  const automations = await automationService.listAutomations({ page: 1, pageSize: 200, onlyActive: true });
 
   return {
     process,
     version,
     forms: forms.data,
+    automations: automations.data,
   };
 }
 
@@ -171,7 +356,7 @@ function validateBpmnForPublication(xml, propriedadesJson) {
   });
 }
 
-async function saveVersion({ processoId, bpmnXml, propriedadesJson, createdBy }) {
+async function saveVersion({ processoId, bpmnXml, propriedadesJson, createdBy, originHost }) {
   if (!bpmnXml || !bpmnXml.trim()) {
     throw new Error('BPMN XML e obrigatorio');
   }
@@ -195,8 +380,16 @@ async function saveVersion({ processoId, bpmnXml, propriedadesJson, createdBy })
   props.meta = props.meta || {};
 
   const process = await processRepository.getProcessById(processoId);
+  const normalizedOriginHost = processApiDefinitionService.normalizeOriginHost(originHost);
   props.meta.processoId = processoId;
   props.meta.processoCodigo = process ? process.codigo : null;
+  props.meta.apiHostOrigin = normalizedOriginHost;
+  props.meta.generatedApis = processApiDefinitionService.buildServiceTaskApiDefinitions({
+    properties: props,
+    processCode: process ? process.codigo : null,
+    originHost: normalizedOriginHost,
+    processId: processoId,
+  });
 
   const current = await processRepository.getLatestVersionNumber(processoId);
   const nextVersion = Number(current) + 1;
@@ -207,6 +400,13 @@ async function saveVersion({ processoId, bpmnXml, propriedadesJson, createdBy })
     bpmnXml,
     propriedadesJson: JSON.stringify(props),
     createdBy,
+  });
+
+  await processRepository.publishVersion({
+    processoId,
+    versaoId: versionId,
+    observacao: 'Publicacao automatica ao salvar versao',
+    publishedBy: createdBy || null,
   });
 
   return processRepository.getVersionById(versionId);
@@ -245,6 +445,7 @@ module.exports = {
   updateProcess,
   deleteProcess,
   getProcessHistory,
+  getProcessInstancesLine,
   getModelerPayload,
   saveVersion,
   publishVersion,

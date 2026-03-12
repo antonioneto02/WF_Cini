@@ -8,6 +8,19 @@
     const payload = {
       nome: form.nome.value.trim(),
       descricao: form.descricao.value.trim(),
+      permissions: {
+        viewers: form.viewers ? form.viewers.value : '',
+        editors: form.editors ? form.editors.value : '',
+        modelers: form.modelers ? form.modelers.value : '',
+        executors: form.executors ? form.executors.value : '',
+        admins: form.admins ? form.admins.value : '',
+      },
+      apiConfig: {
+        allow_protheus: Boolean(form.allow_protheus && form.allow_protheus.checked),
+        allow_mysql: Boolean(form.allow_mysql && form.allow_mysql.checked),
+        allow_external: Boolean(form.allow_external && form.allow_external.checked),
+        ativo: true,
+      },
     };
 
     try {

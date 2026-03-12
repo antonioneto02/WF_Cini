@@ -1,0 +1,99 @@
+<%- include('../partials/shellStart', {
+  pageTitle,
+  pageDescription,
+  user,
+  currentPath,
+  breadcrumbs: [{ label: 'APIs dos Processos' }]
+}) %>
+
+<%
+  const apiRows = Array.isArray(apis) ? apis : [];
+  const totalApis = apiRows.length;
+  const publicadas = apiRows.filter(function (item) {
+    const status = String(item.versao_status || '').toUpperCase();
+    return status === 'PUBLICADA' || status === 'PUBLICADO' || status === 'ATIVO';
+  }).length;
+  const comParametros = apiRows.filter(function (item) {
+    return Array.isArray(item.expected_param_names) && item.expected_param_names.length > 0;
+  }).length;
+  const semParametros = totalApis - comParametros;
+%>
+
+<div class="wf-indicator-grid" style="margin-bottom:16px">
+  <div class="wf-indicator-card wf-indicator-tone-blue">
+    <p class="wf-indicator-label">APIs mapeadas</p>
+    <p class="wf-indicator-value"><%= totalApis %></p>
+    <p class="wf-indicator-note">Atividades de Servico/API publicadas no catalogo.</p>
+  </div>
+  <div class="wf-indicator-card wf-indicator-tone-green">
+    <p class="wf-indicator-label">Versoes publicadas</p>
+    <p class="wf-indicator-value" style="color:#1e8e3e"><%= publicadas %></p>
+    <p class="wf-indicator-note">Endpoints prontos para consumo externo.</p>
+  </div>
+  <div class="wf-indicator-card wf-indicator-tone-amber">
+    <p class="wf-indicator-label">Com parametros</p>
+    <p class="wf-indicator-value" style="color:#e37400"><%= comParametros %></p>
+    <p class="wf-indicator-note">APIs que exigem payload de entrada.</p>
+  </div>
+  <div class="wf-indicator-card wf-indicator-tone-blue">
+    <p class="wf-indicator-label">Sem parametros</p>
+    <p class="wf-indicator-value" style="color:#1a73e8"><%= semParametros %></p>
+    <p class="wf-indicator-note">Execucao direta sem campos obrigatorios.</p>
+  </div>
+</div>
+
+<div class="wf-panel" style="padding:0">
+  <table class="wf-table" style="margin:0">
+    <thead>
+      <tr>
+        <th>Processo</th>
+        <th>Atividade</th>
+        <th>Endpoint</th>
+        <th>Payload esperado</th>
+        <th>Versao</th>
+        <th>Key</th>
+      </tr>
+    </thead>
+    <tbody>
+      <% if (!apis || !apis.length) { %>
+        <tr>
+          <td colspan="6" style="text-align:center;padding:34px;color:#5f6368">
+            <i class="bi bi-inbox" style="font-size:2rem;color:#dadce0;display:block;margin-bottom:8px"></i>
+            Nenhuma API de atividade foi gerada ainda. Salve uma versao com tarefa Servico/API.
+          </td>
+        </tr>
+      <% } %>
+
+      <% (apis || []).forEach(function(api){ %>
+        <tr>
+          <td>
+            <span style="font-weight:600"><%= api.processo_nome %></span><br>
+            <span style="font-size:.78rem;color:#5f6368"><%= api.processo_codigo %></span>
+          </td>
+          <td>
+            <span style="font-weight:500"><%= api.atividade_nome %></span><br>
+            <span style="font-size:.78rem;color:#5f6368"><%= api.atividade_slug %></span>
+          </td>
+          <td style="font-family:monospace;font-size:.78rem;max-width:420px;word-break:break-all">
+            <strong><%= api.metodo_http %></strong> <%= api.endpoint_url %>
+          </td>
+          <td style="font-size:.82rem">
+            <% if (api.expected_param_names && api.expected_param_names.length) { %>
+              <%= api.expected_param_names.join(', ') %>
+            <% } else { %>
+              <span style="color:#5f6368">Sem parametros obrigatorios</span>
+            <% } %>
+          </td>
+          <td>
+            <span class="<%= api.versao_status === 'PUBLICADA' ? 'wf-badge-green' : 'wf-badge-gray' %>">
+              v<%= api.versao_numero || '-' %> - <%= api.versao_status || 'RASCUNHO' %>
+            </span>
+          </td>
+          <td style="font-family:monospace;font-size:.78rem"><%= api.public_api_key || '-' %></td>
+        </tr>
+      <% }) %>
+    </tbody>
+  </table>
+</div>
+
+<%- include('../partials/shellEnd', { pageScript: '' }) %>

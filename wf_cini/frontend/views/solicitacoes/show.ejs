@@ -1,0 +1,451 @@
+<%- include('../partials/shellStart', {
+  pageTitle,
+  pageDescription,
+  user,
+  currentPath: '/solicitacoes',
+  breadcrumbs: [{ label: 'Solicitacoes', href: '/solicitacoes' }, { label: '#' + instance.id }]
+}) %>
+
+<%
+  const __fmtDateTime = (typeof fmtDateTime === 'function')
+    ? fmtDateTime
+    : function (value) {
+        if (!value) return '-';
+        const d = value instanceof Date ? value : new Date(value);
+        if (Number.isNaN(d.getTime())) return '-';
+        return d.toLocaleString('pt-BR', {
+          timeZone: 'America/Sao_Paulo',
+          day: '2-digit',
+          month: '2-digit',
+          year: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+        });
+      };
+%>
+
+<!-- Page header (Fluig-style solicitation header) -->
+<div class="wf-solic-header">
+  <div>
+    <span class="wf-solic-number">Solicitacao #<%= instance.id %></span>
+    <span class="wf-badge wf-badge-<%= instance.status === 'CONCLUIDA' ? 'green' : 'blue' %>" style="margin-left:12px;font-size:12px">
+      <%= instance.status === 'CONCLUIDA' ? 'Concluida' : 'Em andamento' %>
+    </span>
+  </div>
+  <div style="display:flex;gap:8px">
+    <a href="/solicitacoes" class="wf-btn-secondary"><i class="bi bi-arrow-left"></i> Voltar</a>
+  </div>
+</div>
+
+<!-- Metadata grid (Fluig ficha) -->
+<div class="wf-solic-meta">
+  <div class="wf-solic-meta-item">
+    <label>Processo</label>
+    <span><%= process ? process.nome : '-' %></span>
+  </div>
+  <div class="wf-solic-meta-item">
+    <label>Solicitante</label>
+    <span><%= instance.solicitante || '-' %></span>
+  </div>
+  <div class="wf-solic-meta-item">
+    <label>Data de inicio</label>
+    <span><%= __fmtDateTime(instance.started_at) %></span>
+  </div>
+  <div class="wf-solic-meta-item">
+    <label>Data de conclusao</label>
+    <span><%= instance.ended_at ? __fmtDateTime(instance.ended_at) : 'Em aberto' %></span>
+  </div>
+  <div class="wf-solic-meta-item">
+    <label>Atividade atual</label>
+    <span><%= instance.current_element_id || 'Concluido' %></span>
+  </div>
+  <div class="wf-solic-meta-item">
+    <label>Versao</label>
+    <span>v<%= instance.versao_processo_id %></span>
+  </div>
+</div>
+
+<!-- Tabs -->
+<div class="wf-tabs" id="solicTabs">
+  <button type="button" class="wf-tab active" data-tab="timeline">Historico / Timeline</button>
+  <button type="button" class="wf-tab" data-tab="tasks">Atividades (<%= tasks.length %>)</button>
+  <button type="button" class="wf-tab" data-tab="payload">Dados da solicitacao</button>
+  <button type="button" class="wf-tab" data-tab="comments">Comentarios (<%= (comments || []).length %>)</button>
+</div>
+
+<!-- Tab: Timeline (Fluig-style audit trail) -->
+<div id="tab-timeline" class="wf-tab-content">
+  <div class="wf-panel">
+    <% if (!history.length) { %>
+      <p style="color:#5f6368;font-size:13px;text-align:center;padding:30px">Nenhum evento registrado.</p>
+    <% } else { %>
+      <div class="wf-timeline">
+        <% history.forEach(function(item, idx){ %>
+          <div class="wf-timeline-item">
+            <div class="wf-timeline-dot <%= idx === history.length - 1 && instance.status !== 'CONCLUIDA' ? 'current' : 'done' %>"></div>
+            <div class="wf-timeline-content">
+              <div class="wf-timeline-title">
+                <% if (item.tipo_evento === 'STARTED') { %>
+                  <i class="bi bi-play-circle" style="color:#1a73e8"></i> Processo iniciado
+                <% } else if (item.tipo_evento === 'TASK_CREATED') { %>
+                  <i class="bi bi-plus-circle" style="color:#f9ab00"></i> Tarefa criada
+                <% } else if (item.tipo_evento === 'TASK_COMPLETED') { %>
+                  <i class="bi bi-check-circle" style="color:#1e8e3e"></i> Tarefa concluida
+                <% } else if (item.tipo_evento === 'GATEWAY') { %>
+                  <i class="bi bi-signpost-split" style="color:#9334e6"></i> Gateway avaliado
+                <% } else if (item.tipo_evento === 'FINISHED') { %>
+                  <i class="bi bi-flag" style="color:#1e8e3e"></i> Processo finalizado
+                <% } else { %>
+                  <i class="bi bi-circle" style="color:#5f6368"></i> <%= item.tipo_evento %>
+                <% } %>
+              </div>
+              <div class="wf-timeline-meta">
+                <p style="margin:4px 0 0"><%= item.descricao || '-' %></p>
+                <p style="margin:4px 0 0;font-size:11px;color:#9aa0a6">
+                  <%= __fmtDateTime(item.created_at) %> &middot; <%= item.executor || 'Sistema' %>
+                  <% if (item.origem_element_id) { %>
+                    &middot; De: <%= item.origem_element_id %>
+                  <% } %>
+                  <% if (item.destino_element_id) { %>
+                    &rarr; <%= item.destino_element_id %>
+                  <% } %>
+                </p>
+              </div>
+            </div>
+          </div>
+        <% }) %>
+      </div>
+    <% } %>
+  </div>
+</div>
+
+<!-- Tab: Tasks -->
+<div id="tab-tasks" class="wf-tab-content" style="display:none">
+  <div class="wf-panel" style="padding:0;overflow:hidden">
+    <table class="wf-table">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Atividade</th>
+          <th>Responsavel</th>
+          <th>Status</th>
+          <th>Acao</th>
+          <th>Data criacao</th>
+          <th>Data conclusao</th>
+          <th>Concluido por</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% if (!tasks.length) { %>
+          <tr><td colspan="8" style="text-align:center;padding:30px;color:#5f6368">Nenhuma tarefa registrada.</td></tr>
+        <% } %>
+        <% tasks.forEach(function(task, idx){ %>
+          <tr>
+            <td><%= idx + 1 %></td>
+            <td><strong><%= task.nome_etapa %></strong></td>
+            <td><%= task.responsavel || 'Pool' %></td>
+            <td>
+              <% const tc = task.status === 'CONCLUIDA' ? 'wf-badge-green' : (task.status === 'MINHAS_TAREFAS' ? 'wf-badge-yellow' : 'wf-badge-blue'); %>
+              <span class="wf-badge <%= tc %>"><%= task.status === 'CONCLUIDA' ? 'Concluida' : (task.status === 'MINHAS_TAREFAS' ? 'Pendente' : 'Em andamento') %></span>
+            </td>
+            <td><%= task.acao_final || '-' %></td>
+            <td><%= __fmtDateTime(task.created_at) %></td>
+            <td><%= task.completed_at ? __fmtDateTime(task.completed_at) : '-' %></td>
+            <td><%= task.completed_by || '-' %></td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Tab: Payload data -->
+<div id="tab-payload" class="wf-tab-content" style="display:none">
+  <div class="wf-panel">
+    <h3 style="margin:0 0 12px;font-size:14px;font-weight:600">Dados enviados na solicitacao</h3>
+    <pre style="background:#f5f5f5;padding:16px;border-radius:6px;overflow:auto;font-size:12px;color:#202124;max-height:400px;border:1px solid #dadce0"><%= instance.payload_json ? (typeof instance.payload_json === 'string' ? instance.payload_json : JSON.stringify(JSON.parse(instance.payload_json || '{}'), null, 2)) : '{}' %></pre>
+  </div>
+</div>
+
+<div id="tab-comments" class="wf-tab-content" style="display:none">
+  <div class="wf-panel">
+    <div id="solicCommentsPanel" class="wf-comments-wrap" data-instance-id="<%= instance.id %>">
+      <div id="solicCommentsList" class="wf-comments-wrap">
+        <% if (!comments || !comments.length) { %>
+          <div class="wf-comment-item" id="solicCommentsEmptyState">
+            <div class="wf-comment-meta">Sem comentarios ainda</div>
+            <div class="wf-comment-text">Comente para alinhar o fluxo com o time. Use @usuario para mencionar.</div>
+          </div>
+        <% } %>
+        <% (comments || []).forEach(function(item){ %>
+          <div class="wf-comment-item">
+            <div class="wf-comment-meta"><strong><%= item.autor %></strong> &middot; <%= __fmtDateTime(item.created_at) %></div>
+            <div class="wf-comment-text"><%= item.mensagem %></div>
+          </div>
+        <% }) %>
+      </div>
+
+      <form id="solicCommentForm" class="wf-comment-form">
+        <div class="wf-comment-mention-wrap">
+          <textarea id="solicCommentInput" placeholder="Escreva um comentario (use @usuario para mencionar)"></textarea>
+          <div id="solicCommentMentionSuggestions" class="wf-comment-mention-suggestions" style="display:none"></div>
+        </div>
+        <div style="display:flex;justify-content:flex-end;gap:8px">
+          <button type="submit" class="wf-btn-primary" style="font-size:.85rem"><i class="bi bi-chat-dots"></i> Comentar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  var tabs = document.querySelectorAll('#solicTabs .wf-tab');
+  var commentsPanel = document.getElementById('solicCommentsPanel');
+  var commentsList = document.getElementById('solicCommentsList');
+  var commentForm = document.getElementById('solicCommentForm');
+  var commentInput = document.getElementById('solicCommentInput');
+  var commentMentionSuggestions = document.getElementById('solicCommentMentionSuggestions');
+  var mentionState = {
+    debounceTimer: null,
+    selectedUsers: new Map(),
+  };
+
+  function escapeHtml(value) {
+    return String(value || '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/\"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  function formatDate(value) {
+    var d = value ? new Date(value) : null;
+    if (!d || Number.isNaN(d.getTime())) return '-';
+    return d.toLocaleString('pt-BR', {
+      timeZone: 'America/Sao_Paulo',
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  }
+
+  function normalizeUserId(value) {
+    return String(value || '').trim().toUpperCase();
+  }
+
+  function hideMentionSuggestions() {
+    if (!commentMentionSuggestions) return;
+    commentMentionSuggestions.style.display = 'none';
+    commentMentionSuggestions.innerHTML = '';
+  }
+
+  function getActiveMentionQuery() {
+    if (!commentInput) return null;
+
+    var cursor = Number(commentInput.selectionStart || 0);
+    var prefix = String(commentInput.value || '').slice(0, cursor);
+    var match = prefix.match(/(?:^|\s)@([^\s@]{1,40})$/);
+    if (!match) return null;
+
+    var query = String(match[1] || '').trim();
+    var tokenStart = prefix.lastIndexOf('@' + query);
+    if (tokenStart < 0) return null;
+
+    return {
+      query: query,
+      tokenStart: tokenStart,
+      tokenEnd: cursor,
+    };
+  }
+
+  async function searchMentionUsers(term) {
+    var response = await fetch('/api/protheus/usuarios?search=' + encodeURIComponent(term) + '&limit=10');
+    var body = await response.json();
+    if (!response.ok) throw new Error(body.message || 'Falha ao pesquisar usuarios');
+    return Array.isArray(body.data) ? body.data : [];
+  }
+
+  function applyMentionSelection(user, mentionQuery) {
+    if (!commentInput || !mentionQuery) return;
+
+    var id = normalizeUserId(user && (user.id || user.usuario) ? (user.id || user.usuario) : '');
+    var displayName = String(user && user.nome ? user.nome : id || '').trim();
+    if (!id || !displayName) return;
+
+    var source = String(commentInput.value || '');
+    var before = source.slice(0, mentionQuery.tokenStart);
+    var after = source.slice(mentionQuery.tokenEnd);
+    var inserted = '@' + displayName + ' ';
+    commentInput.value = before + inserted + after;
+
+    var nextCursor = before.length + inserted.length;
+    commentInput.focus();
+    commentInput.setSelectionRange(nextCursor, nextCursor);
+
+    mentionState.selectedUsers.set(id, {
+      id: id,
+      nome: displayName,
+    });
+
+    hideMentionSuggestions();
+  }
+
+  function renderMentionSuggestions(users, mentionQuery) {
+    if (!commentMentionSuggestions) return;
+
+    var list = Array.isArray(users) ? users : [];
+    if (!list.length) {
+      commentMentionSuggestions.innerHTML = '<div class="wf-perm-empty">Nenhum usuario encontrado</div>';
+      commentMentionSuggestions.style.display = 'block';
+      return;
+    }
+
+    commentMentionSuggestions.innerHTML = list.map(function(user) {
+      var id = normalizeUserId(user.id || user.usuario || '');
+      var nome = String(user.nome || id || '').trim();
+      var email = String(user.email || '').trim();
+      return '<button type="button" class="wf-perm-suggestion-item" data-user-id="' + escapeHtml(id) + '" data-user-name="' + escapeHtml(nome) + '">' 
+        + '<div class="wf-perm-suggestion-title">' + escapeHtml(nome) + '</div>'
+        + '<div class="wf-perm-suggestion-subtitle">' + escapeHtml(id) + (email ? ' • ' + escapeHtml(email) : '') + '</div>'
+      + '</button>';
+    }).join('');
+
+    commentMentionSuggestions.querySelectorAll('.wf-perm-suggestion-item').forEach(function(button) {
+      button.addEventListener('click', function() {
+        var id = button.getAttribute('data-user-id') || '';
+        var nome = button.getAttribute('data-user-name') || id;
+        applyMentionSelection({ id: id, nome: nome }, mentionQuery);
+      });
+    });
+
+    commentMentionSuggestions.style.display = 'block';
+  }
+
+  function bindMentionAutocomplete() {
+    if (!commentInput || !commentMentionSuggestions) return;
+
+    var triggerSearch = function() {
+      var mentionQuery = getActiveMentionQuery();
+      if (!mentionQuery || !mentionQuery.query || mentionQuery.query.length < 1) {
+        hideMentionSuggestions();
+        return;
+      }
+
+      if (mentionState.debounceTimer) {
+        clearTimeout(mentionState.debounceTimer);
+        mentionState.debounceTimer = null;
+      }
+
+      mentionState.debounceTimer = setTimeout(async function() {
+        try {
+          var users = await searchMentionUsers(mentionQuery.query);
+          renderMentionSuggestions(users, mentionQuery);
+        } catch (_) {
+          hideMentionSuggestions();
+        }
+      }, 180);
+    };
+
+    commentInput.addEventListener('input', triggerSearch);
+    commentInput.addEventListener('click', triggerSearch);
+    commentInput.addEventListener('keyup', triggerSearch);
+
+    document.addEventListener('click', function(event) {
+      if (event.target === commentInput) return;
+      if (commentMentionSuggestions.contains(event.target)) return;
+      hideMentionSuggestions();
+    });
+  }
+
+  function renderComments(items) {
+    if (!commentsList) return;
+    var list = Array.isArray(items) ? items : [];
+    if (!list.length) {
+      commentsList.innerHTML = '<div class="wf-comment-item"><div class="wf-comment-meta">Sem comentarios ainda</div><div class="wf-comment-text">Comente para alinhar o fluxo com o time. Use @usuario para mencionar.</div></div>';
+      return;
+    }
+
+    commentsList.innerHTML = list.map(function(item) {
+      return '<div class="wf-comment-item">'
+        + '<div class="wf-comment-meta"><strong>' + escapeHtml(item.autor || '-') + '</strong> &middot; ' + escapeHtml(formatDate(item.created_at)) + '</div>'
+        + '<div class="wf-comment-text">' + escapeHtml(item.mensagem || '') + '</div>'
+        + '</div>';
+    }).join('');
+  }
+
+  async function loadComments() {
+    if (!commentsPanel) return;
+    var instanceId = Number(commentsPanel.getAttribute('data-instance-id') || 0);
+    if (!instanceId) return;
+
+    try {
+      var response = await fetch('/api/comentarios?instanciaId=' + instanceId + '&limit=120');
+      var body = await response.json();
+      if (!response.ok) throw new Error(body.message || 'Falha ao carregar comentarios');
+      renderComments(body.data || []);
+    } catch (error) {
+      if (window.WorkflowUI) window.WorkflowUI.showToast(error.message || 'Erro ao carregar comentarios', 'error');
+    }
+  }
+
+  async function submitComment(event) {
+    event.preventDefault();
+    if (!commentsPanel || !commentInput) return;
+
+    var instanceId = Number(commentsPanel.getAttribute('data-instance-id') || 0);
+    var mensagem = String(commentInput.value || '').trim();
+    if (!mensagem) {
+      if (window.WorkflowUI) window.WorkflowUI.showToast('Digite um comentario antes de enviar', 'warning');
+      return;
+    }
+
+    try {
+      if (window.WorkflowUI) window.WorkflowUI.setLoader(true);
+      var response = await fetch('/api/comentarios', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          instanciaId: instanceId,
+          mensagem: mensagem,
+          mentionUsers: Array.from(mentionState.selectedUsers.keys()),
+        }),
+      });
+
+      var body = await response.json();
+      if (!response.ok) throw new Error(body.message || 'Falha ao comentar');
+
+      commentInput.value = '';
+      mentionState.selectedUsers.clear();
+      hideMentionSuggestions();
+      if (window.WorkflowUI) window.WorkflowUI.showToast('Comentario enviado', 'success');
+      await loadComments();
+    } catch (error) {
+      if (window.WorkflowUI) window.WorkflowUI.showToast(error.message || 'Erro ao enviar comentario', 'error');
+    } finally {
+      if (window.WorkflowUI) window.WorkflowUI.setLoader(false);
+    }
+  }
+
+  tabs.forEach(function(tab) {
+    tab.addEventListener('click', function() {
+      tabs.forEach(function(t) { t.classList.remove('active'); });
+      tab.classList.add('active');
+      document.querySelectorAll('.wf-tab-content').forEach(function(c) { c.style.display = 'none'; });
+      var target = document.getElementById('tab-' + tab.getAttribute('data-tab'));
+      if (target) target.style.display = 'block';
+      if (tab.getAttribute('data-tab') === 'comments') loadComments();
+    });
+  });
+
+  if (commentForm) {
+    commentForm.addEventListener('submit', submitComment);
+    bindMentionAutocomplete();
+  }
+});
+</script>
+
+<%- include('../partials/shellEnd', { pageScript: '' }) %>

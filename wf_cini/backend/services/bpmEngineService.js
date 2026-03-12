@@ -5,6 +5,9 @@ const instanceRepository = require('../repositories/instanceRepository');
 const taskRepository = require('../repositories/taskRepository');
 const historyRepository = require('../repositories/historyRepository');
 const formRepository = require('../repositories/formRepository');
+const db = require('../models/db');
+const automationService = require('./automationService');
+const notificationService = require('./notificationService');
 const {
   parseXml,
   buildGraph,
@@ -13,6 +16,7 @@ const {
   hasTimerDefinition,
   getTimerExpression,
 } = require('./bpmnParserService');
+const { buildFriendlyElementName } = require('../utils/bpmnNaming');
 
 function safeJsonParse(str, fallback) {
   if (!str) return fallback;
@@ -69,6 +73,92 @@ function evaluateExpression(expression, contextData = {}) {
   } catch (_) {
     return false;
   }
+}
+
+function readValueByPath(source, path) {
+  if (!source || typeof source !== 'object') return undefined;
+  const normalizedPath = String(path || '').trim();
+  if (!normalizedPath) return undefined;
+
+  if (Object.prototype.hasOwnProperty.call(source, normalizedPath)) {
+    return source[normalizedPath];
+  }
+
+  if (!normalizedPath.includes('.')) {
+    return source[normalizedPath];
+  }
+
+  return normalizedPath.split('.').reduce((acc, key) => {
+    if (!acc || typeof acc !== 'object') return undefined;
+    return acc[key];
+  }, source);
+}
+
+function setValueByPath(target, path, value) {
+  const normalizedPath = String(path || '').trim();
+  if (!normalizedPath) return;
+
+  if (!normalizedPath.includes('.')) {
+    target[normalizedPath] = value;
+    return;
+  }
+
+  const parts = normalizedPath.split('.').filter(Boolean);
+  if (!parts.length) return;
+
+  let cursor = target;
+  for (let index = 0; index < parts.length - 1; index += 1) {
+    const key = parts[index];
+    if (!cursor[key] || typeof cursor[key] !== 'object' || Array.isArray(cursor[key])) {
+      cursor[key] = {};
+    }
+    cursor = cursor[key];
+  }
+
+  cursor[parts[parts.length - 1]] = value;
+}
+
+function buildAutomationPayloadFromContext(contextData, mappingConfig) {
+  const sourceResponse = contextData && contextData.response && typeof contextData.response === 'object'
+    ? contextData.response
+    : {};
+  const sourcePayload = contextData && contextData.payload && typeof contextData.payload === 'object'
+    ? contextData.payload
+    : {};
+
+  const mappings = Array.isArray(mappingConfig) ? mappingConfig : [];
+  if (!mappings.length) {
+    return Object.keys(sourceResponse).length ? sourceResponse : sourcePayload;
+  }
+
+  const output = {};
+  let matched = 0;
+
+  mappings.forEach((entry) => {
+    const sourcePath = String((entry && entry.source) || entry || '').trim();
+    const targetPath = String((entry && entry.target) || sourcePath).trim();
+    if (!sourcePath || !targetPath) return;
+
+    let value = readValueByPath(sourceResponse, sourcePath);
+    if (value === undefined) {
+      value = readValueByPath(sourcePayload, sourcePath);
+    }
+    if (value === undefined) return;
+
+    setValueByPath(output, targetPath, value);
+    matched += 1;
+  });
+
+  if (!matched) {
+    return Object.keys(sourceResponse).length ? sourceResponse : sourcePayload;
+  }
+
+  return output;
+}
+
+function isSafeDbCommand(commandText) {
+  const trimmed = String(commandText || '').trim().toUpperCase();
+  return trimmed.startsWith('SELECT') || trimmed.startsWith('EXEC');
 }
 
 function executeScript(scriptCode, contextData = {}) {
@@ -220,6 +310,11 @@ async function continueFlow({
 
   const element = graph.elementMap[elementId];
   if (!element) return;
+  const elementDisplayName = buildFriendlyElementName({
+    elementId: element.id,
+    elementName: element.name,
+    elementType: element.$type,
+  });
 
   await instanceRepository.updateInstancePointer(instance.id, element.id);
 
@@ -230,7 +325,7 @@ async function continueFlow({
     origemElementId: sourceElementId || null,
     destinoElementId: element.id,
     tipoEvento: 'ENTRADA_ELEMENTO',
-    descricao: `Entrada no elemento ${element.name || element.id} (${element.$type})`,
+    descricao: `Entrada no elemento ${elementDisplayName} (${element.$type})`,
     executor,
     payloadJson: contextData,
   });
@@ -262,21 +357,29 @@ async function continueFlow({
   }
 
   if (elementType === 'bpmn:UserTask') {
-    const responsible = readElementProperty(graph, element.id, 'responsible', 'ANY');
+    const taskType = readElementProperty(graph, element.id, 'taskType', 'USER');
+    let responsible = String(readElementProperty(graph, element.id, 'responsible', '') || '').trim();
+    if (taskType === 'MANAGER') {
+      const managers = readElementProperty(graph, element.id, 'managerUsers', []);
+      if (Array.isArray(managers) && managers.length) {
+        responsible = String(managers[0] || '').trim();
+      }
+    }
     const sla = Number(readElementProperty(graph, element.id, 'sla', 24));
     const formId = Number(readElementProperty(graph, element.id, 'formId', 0)) || null;
 
     const taskConfig = {
       formId,
       script: readElementProperty(graph, element.id, 'script', null),
+      taskType,
     };
 
-    await taskRepository.createTask({
+    const createdTaskId = await taskRepository.createTask({
       instanciaId: instance.id,
       processoId: instance.processo_id,
       versaoProcessoId: instance.versao_processo_id,
       elementId: element.id,
-      nomeEtapa: element.name || element.id,
+      nomeEtapa: elementDisplayName,
       responsavel: responsible,
       slaHoras: sla,
       formConfigJson: JSON.stringify(taskConfig),
@@ -290,16 +393,31 @@ async function continueFlow({
       origemElementId: sourceElementId || null,
       destinoElementId: element.id,
       tipoEvento: 'TAREFA_CRIADA',
-      descricao: `Tarefa criada para ${responsible}`,
+      descricao: responsible ? `Tarefa criada para ${responsible}` : 'Tarefa criada sem responsavel definido',
       executor,
       payloadJson: { responsavel: responsible, sla_horas: sla },
+    });
+
+    await notificationService.notifyTaskCreated({
+      responsavel: responsible,
+      taskId: createdTaskId,
+      instanciaId: instance.id,
+      processoNome: contextData && contextData.payload ? contextData.payload.processo_codigo || null : null,
+      nomeEtapa: elementDisplayName,
+      actor: executor,
     });
 
     return;
   }
 
   if (elementType === 'bpmn:ServiceTask') {
+    const taskType = readElementProperty(graph, element.id, 'taskType', 'SERVICE');
     const script = readElementProperty(graph, element.id, 'script', null);
+    const automationId = Number(readElementProperty(graph, element.id, 'automationId', 0)) || null;
+    const automationEndpoint = readElementProperty(graph, element.id, 'automationEndpoint', null);
+    const automationMethod = readElementProperty(graph, element.id, 'automationMethod', 'POST');
+    const automationPayloadMap = readElementProperty(graph, element.id, 'automationPayloadMap', []);
+    const dbQuery = readElementProperty(graph, element.id, 'dbQuery', null);
 
     if (script) {
       executeScript(script, {
@@ -307,6 +425,96 @@ async function continueFlow({
         action: contextData && contextData.action ? contextData.action : null,
         currentUser: executor,
       });
+    }
+
+    if (taskType === 'AUTOMATION') {
+      const automationPayload = buildAutomationPayloadFromContext(contextData, automationPayloadMap);
+      const automationRequestBody = {
+        processo_id: instance.processo_id,
+        instancia_id: instance.id,
+        atividade_id: element.id,
+        atividade_nome: elementDisplayName,
+        acao: contextData && contextData.action ? contextData.action : null,
+        usuario_atual: executor,
+        resposta_formulario: automationPayload,
+        resposta_original: contextData && contextData.response ? contextData.response : {},
+        payload_fluxo: contextData && contextData.payload ? contextData.payload : {},
+      };
+
+      try {
+        let automationResult = null;
+        if (automationEndpoint) {
+          automationResult = await automationService.invokeEndpoint({
+            endpointUrl: automationEndpoint,
+            method: automationMethod,
+            payload: automationRequestBody,
+            triggerUser: executor,
+          });
+        } else if (automationId) {
+          automationResult = await automationService.invokeAutomation({
+            automationId,
+            payload: automationRequestBody,
+            triggerUser: executor,
+          });
+        } else {
+          throw new Error('Automacao externa sem endpoint e sem automacao cadastrada');
+        }
+
+        await logHistory({
+          instanciaId: instance.id,
+          processoId: instance.processo_id,
+          versaoProcessoId: instance.versao_processo_id,
+          origemElementId: sourceElementId || null,
+          destinoElementId: element.id,
+          tipoEvento: 'AUTOMACAO_EXECUTADA',
+          descricao: automationEndpoint
+            ? `Automacao externa em ${automationEndpoint} executada com status ${automationResult.status}`
+            : `Automacao ${automationId} executada com status ${automationResult.status}`,
+          executor,
+          payloadJson: automationResult,
+        });
+      } catch (error) {
+        await logHistory({
+          instanciaId: instance.id,
+          processoId: instance.processo_id,
+          versaoProcessoId: instance.versao_processo_id,
+          origemElementId: sourceElementId || null,
+          destinoElementId: element.id,
+          tipoEvento: 'AUTOMACAO_ERRO',
+          descricao: error.message || 'Falha na automacao externa',
+          executor,
+        });
+      }
+    }
+
+    if (taskType === 'DB' && dbQuery && isSafeDbCommand(dbQuery)) {
+      try {
+        const rows = await db.query(dbQuery, {});
+        await logHistory({
+          instanciaId: instance.id,
+          processoId: instance.processo_id,
+          versaoProcessoId: instance.versao_processo_id,
+          origemElementId: sourceElementId || null,
+          destinoElementId: element.id,
+          tipoEvento: 'DB_CONSULTA_EXECUTADA',
+          descricao: 'Consulta SQL executada no no de banco de dados',
+          executor,
+          payloadJson: {
+            total_linhas: Array.isArray(rows) ? rows.length : 0,
+          },
+        });
+      } catch (error) {
+        await logHistory({
+          instanciaId: instance.id,
+          processoId: instance.processo_id,
+          versaoProcessoId: instance.versao_processo_id,
+          origemElementId: sourceElementId || null,
+          destinoElementId: element.id,
+          tipoEvento: 'DB_CONSULTA_ERRO',
+          descricao: error.message || 'Falha na consulta SQL do no',
+          executor,
+        });
+      }
     }
 
     const outgoing = await handleOutgoingFlows({
@@ -483,6 +691,15 @@ async function continueFlow({
     });
 
     await maybeFinishInstance(instance.id);
+
+    const refreshedInstance = await instanceRepository.getInstanceById(instance.id);
+    if (refreshedInstance && String(refreshedInstance.status || '').toUpperCase() === 'CONCLUIDA') {
+      await notificationService.notifyInstanceFinished({
+        solicitante: refreshedInstance.solicitante,
+        instanciaId: refreshedInstance.id,
+        processoNome: contextData && contextData.payload ? contextData.payload.processo_codigo || null : null,
+      });
+    }
     return;
   }
 
@@ -603,6 +820,14 @@ async function completeUserTask({ taskId, action, observacao, response, user }) 
       observacao,
       acao: action,
     },
+  });
+
+  await notificationService.notifyTaskCompleted({
+    solicitante: task.solicitante,
+    taskId: task.id,
+    instanciaId: task.instancia_processo_id,
+    nomeEtapa: task.nome_etapa,
+    action,
   });
 
   const processVersion = await processRepository.getVersionById(task.versao_processo_id);

@@ -1,14 +1,11 @@
 const taskService = require('../services/taskService');
 const bpmEngineService = require('../services/bpmEngineService');
-
-function currentUser(req) {
-  return (req.session && req.session.username) || (req.cookies && req.cookies.username) || 'sistema';
-}
+const { getCurrentUser } = require('../utils/requestUser');
 
 async function list(req, res, next) {
   try {
     const result = await taskService.listKanbanTasks({
-      user: currentUser(req),
+      user: getCurrentUser(req),
       status: req.query.status || null,
       processoId: req.query.processoId ? Number(req.query.processoId) : null,
       responsavel: req.query.responsavel || null,
@@ -27,6 +24,11 @@ async function updateStatus(req, res, next) {
   try {
     const taskId = Number(req.params.id);
     const status = req.body.status;
+    const user = getCurrentUser(req);
+    const canHandle = await taskService.canUserHandleTask(taskId, user);
+    if (!canHandle) {
+      return res.status(403).json({ ok: false, message: 'Sem permissao para alterar esta tarefa' });
+    }
 
     await taskService.moveTask(taskId, status);
     return res.json({ ok: true });
@@ -38,13 +40,18 @@ async function updateStatus(req, res, next) {
 async function complete(req, res, next) {
   try {
     const taskId = Number(req.params.id);
+    const user = getCurrentUser(req);
+    const canHandle = await taskService.canUserHandleTask(taskId, user);
+    if (!canHandle) {
+      return res.status(403).json({ ok: false, message: 'Sem permissao para concluir esta tarefa' });
+    }
 
     const updatedTask = await bpmEngineService.completeUserTask({
       taskId,
       action: req.body.action || 'aprovar',
       observacao: req.body.observacao || null,
       response: req.body.response || {},
-      user: currentUser(req),
+      user,
     });
 
     return res.json(updatedTask);
@@ -56,11 +63,17 @@ async function complete(req, res, next) {
 async function saveDraft(req, res, next) {
   try {
     const taskId = Number(req.params.id);
+    const user = getCurrentUser(req);
+    const canHandle = await taskService.canUserHandleTask(taskId, user);
+    if (!canHandle) {
+      return res.status(403).json({ ok: false, message: 'Sem permissao para editar rascunho desta tarefa' });
+    }
+
     const updatedTask = await taskService.saveTaskDraft({
       taskId,
       observacao: req.body.observacao || null,
       response: req.body.response || {},
-      user: currentUser(req),
+      user,
     });
     return res.json(updatedTask);
   } catch (err) {

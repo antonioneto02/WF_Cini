@@ -95,6 +95,43 @@ async function listInstances({ page = 1, pageSize = 10, processoId = null, statu
   };
 }
 
+async function getProcessInstanceStats(processoId) {
+  const rows = await db.query(
+    `SELECT status, COUNT(*) AS total
+     FROM instancias_processo
+     WHERE processo_id = :processoId
+     GROUP BY status`,
+    { processoId }
+  );
+
+  const summary = {
+    total: 0,
+    concluidas: 0,
+    em_andamento: 0,
+    com_erro: 0,
+  };
+
+  rows.forEach((row) => {
+    const amount = Number(row.total || 0);
+    const status = String(row.status || '').toUpperCase();
+    summary.total += amount;
+
+    if (status === 'CONCLUIDA') {
+      summary.concluidas += amount;
+      return;
+    }
+
+    if (status === 'ERRO' || status === 'FALHA') {
+      summary.com_erro += amount;
+      return;
+    }
+
+    summary.em_andamento += amount;
+  });
+
+  return summary;
+}
+
 module.exports = {
   createInstance,
   getInstanceById,
@@ -102,4 +139,5 @@ module.exports = {
   updateRuntimeState,
   finishInstance,
   listInstances,
+  getProcessInstanceStats,
 };

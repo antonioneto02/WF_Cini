@@ -1,0 +1,136 @@
+<%- include('../partials/shellStart', {
+  pageTitle,
+  pageDescription,
+  user,
+  currentPath,
+  breadcrumbs: [{ label: 'Modo Dev' }, { label: 'APIs de Processos' }]
+}) %>
+
+<%
+  const configRows = Array.isArray(configs) ? configs : [];
+  const totalConfigs = configRows.length;
+  const allowProtheusCount = configRows.filter(function (item) { return Boolean(item.allow_protheus); }).length;
+  const allowMysqlCount = configRows.filter(function (item) { return Boolean(item.allow_mysql); }).length;
+  const allowExternalCount = configRows.filter(function (item) { return Boolean(item.allow_external); }).length;
+%>
+
+<div class="wf-indicator-grid" style="margin-bottom:16px">
+  <div class="wf-indicator-card wf-indicator-tone-blue">
+    <p class="wf-indicator-label">Processos com API</p>
+    <p class="wf-indicator-value"><%= totalConfigs %></p>
+    <p class="wf-indicator-note">Total de processos com chave publica configurada.</p>
+  </div>
+  <div class="wf-indicator-card wf-indicator-tone-green">
+    <p class="wf-indicator-label">Protheus liberado</p>
+    <p class="wf-indicator-value" style="color:#1e8e3e"><%= allowProtheusCount %></p>
+    <p class="wf-indicator-note">Processos habilitados para start via Protheus.</p>
+  </div>
+  <div class="wf-indicator-card wf-indicator-tone-amber">
+    <p class="wf-indicator-label">MySQL liberado</p>
+    <p class="wf-indicator-value" style="color:#e37400"><%= allowMysqlCount %></p>
+    <p class="wf-indicator-note">Processos com entrada via integracao MySQL.</p>
+  </div>
+  <div class="wf-indicator-card wf-indicator-tone-blue">
+    <p class="wf-indicator-label">Externa liberada</p>
+    <p class="wf-indicator-value" style="color:#1a73e8"><%= allowExternalCount %></p>
+    <p class="wf-indicator-note">Processos expostos para sistemas externos.</p>
+  </div>
+</div>
+
+<div class="wf-panel" style="margin-bottom:16px;padding:14px 18px">
+  <p style="font-size:.88rem;color:#5f6368;margin:0">Area exclusiva do usuario 000460 para governanca tecnica de integracoes por processo.</p>
+</div>
+
+<div class="wf-panel" style="margin-bottom:16px;padding:14px 18px;border:1px solid #f5c2c7;background:#fff5f6">
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap">
+    <div>
+      <p style="margin:0 0 6px;font-size:.9rem;font-weight:600;color:#842029">Zona de risco: limpeza total</p>
+      <p style="margin:0;font-size:.84rem;color:#842029;max-width:760px">
+        Este comando exclui tudo do workflow: tarefas, processos, modelos (versoes), formularios, historicos e referencias relacionadas.
+      </p>
+    </div>
+    <button type="button" id="wfDeleteAllDataBtn" class="wf-btn-danger" style="white-space:nowrap">
+      <i class="bi bi-trash3"></i> Deletar tudo
+    </button>
+  </div>
+</div>
+
+<div class="wf-panel" style="padding:0">
+  <table class="wf-table" style="margin:0">
+    <thead>
+      <tr><th>Processo</th><th>Endpoint start</th><th>Key</th><th>Permissoes API</th></tr>
+    </thead>
+    <tbody>
+      <% if (!configs.length) { %>
+        <tr><td colspan="4" style="text-align:center;padding:32px;color:#5f6368"><i class="bi bi-inbox" style="font-size:2rem;color:#dadce0;display:block;margin-bottom:8px"></i>Nenhuma configuracao de API encontrada.</td></tr>
+      <% } %>
+      <% configs.forEach(function(item){ %>
+        <tr>
+          <td>
+            <span style="font-weight:500"><%= item.processo_nome %></span>
+            <br><span style="font-size:.78rem;color:#5f6368"><%= item.processo_codigo %></span>
+          </td>
+          <td style="font-family:monospace;font-size:.8rem">POST /api/public/processos/<%= item.processo_codigo %>/start?key=...</td>
+          <td style="font-family:monospace;font-size:.8rem"><%= item.public_api_key %></td>
+          <td style="font-size:.85rem">
+            Protheus: <span class="<%= item.allow_protheus ? 'wf-badge-green' : 'wf-badge-gray' %>"><%= item.allow_protheus ? 'ON' : 'OFF' %></span>
+            MySQL: <span class="<%= item.allow_mysql ? 'wf-badge-green' : 'wf-badge-gray' %>"><%= item.allow_mysql ? 'ON' : 'OFF' %></span>
+            Externa: <span class="<%= item.allow_external ? 'wf-badge-green' : 'wf-badge-gray' %>"><%= item.allow_external ? 'ON' : 'OFF' %></span>
+          </td>
+        </tr>
+      <% }) %>
+    </tbody>
+  </table>
+</div>
+
+<script>
+  (function () {
+    const button = document.getElementById('wfDeleteAllDataBtn');
+    if (!button) return;
+
+    const confirmPhrase = 'DELETAR TUDO';
+
+    button.addEventListener('click', async function () {
+      const approved = window.confirm(
+        'Esta acao vai apagar todos os dados do workflow e nao pode ser desfeita. Deseja continuar?'
+      );
+      if (!approved) return;
+
+      const typed = window.prompt('Digite "' + confirmPhrase + '" para confirmar a limpeza total:', '');
+      if (typed === null) return;
+
+      if (String(typed).trim().toUpperCase() !== confirmPhrase) {
+        window.alert('Confirmacao invalida. Nenhum dado foi removido.');
+        return;
+      }
+
+      const previousLabel = button.innerHTML;
+      button.disabled = true;
+      button.innerHTML = '<i class="bi bi-hourglass-split"></i> Excluindo...';
+
+      try {
+        const response = await fetch('/api/admin/limpeza-total', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ confirmText: typed }),
+        });
+
+        const payload = await response.json().catch(function () { return {}; });
+        if (!response.ok || !payload.ok) {
+          throw new Error(payload.message || 'Falha ao executar limpeza total');
+        }
+
+        const deletedTotal = Number(payload.deletedTotal || 0);
+        window.alert('Limpeza total concluida com sucesso. Registros removidos: ' + deletedTotal + '.');
+        window.location.reload();
+      } catch (error) {
+        window.alert(error && error.message ? error.message : 'Falha ao executar limpeza total');
+      } finally {
+        button.disabled = false;
+        button.innerHTML = previousLabel;
+      }
+    });
+  })();
+</script>
+
+<%- include('../partials/shellEnd', { pageScript: '' }) %>

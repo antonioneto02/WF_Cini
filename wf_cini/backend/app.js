@@ -5,6 +5,7 @@ const { createEnsureAuthBridge } = require('./middlewares/ensureAuthBridge');
 const { apiErrorHandler } = require('./middlewares/apiErrorHandler');
 const { createWebRoutes } = require('./routes/webRoutes');
 const { createApiRoutes } = require('./routes/apiRoutes');
+const { createPublicApiRoutes } = require('./routes/publicApiRoutes');
 
 function registerBpmModule(app, dependencies = {}) {
   if (!app) throw new Error('Express app e obrigatorio');
@@ -14,6 +15,7 @@ function registerBpmModule(app, dependencies = {}) {
 
   app.use('/workflow-assets', express.static(path.join(__dirname, '..', 'frontend', 'public')));
 
+  app.use('/api/public', createPublicApiRoutes());
   app.use(createWebRoutes(authMiddleware));
   app.use('/api', createApiRoutes(authMiddleware));
 

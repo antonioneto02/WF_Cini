@@ -1,0 +1,160 @@
+<%- include('../partials/shellStart', {
+  pageTitle,
+  pageDescription,
+  user,
+  currentPath,
+  breadcrumbs: [
+    { label: 'Processos', href: '/processos' },
+    { label: payload.process.codigo, href: '/processos/' + payload.process.id },
+    { label: 'Linha das instancias' }
+  ]
+}) %>
+
+<%
+  const __fmtDateTime = (typeof fmtDateTime === 'function')
+    ? fmtDateTime
+    : function (value) {
+        if (!value) return '-';
+        const d = value instanceof Date ? value : new Date(value);
+        if (Number.isNaN(d.getTime())) return '-';
+        return d.toLocaleString('pt-BR', {
+          timeZone: 'America/Sao_Paulo',
+          day: '2-digit',
+          month: '2-digit',
+          year: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+        });
+      };
+
+  const summary = payload.summary || {};
+  const total = Number(summary.total || 0);
+  const concluidas = Number(summary.concluidas || 0);
+  const emAndamento = Number(summary.em_andamento || 0);
+  const comErro = Number(summary.com_erro || 0);
+  const taxaSucesso = Number(summary.taxa_sucesso || 0);
+
+  function badgeClass(status) {
+    const normalized = String(status || '').toUpperCase();
+    if (normalized === 'CONCLUIDA') return 'wf-badge-green';
+    if (normalized === 'ERRO' || normalized === 'FALHA') return 'wf-badge-red';
+    if (normalized === 'EM_ANDAMENTO') return 'wf-badge-yellow';
+    return 'wf-badge-gray';
+  }
+%>
+
+<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:18px">
+  <div>
+    <h2 style="margin:0;font-size:1.2rem;font-weight:700;color:#202124">
+      Linha das instancias - <%= payload.process.nome %>
+    </h2>
+    <p style="margin:4px 0 0;font-size:.85rem;color:#5f6368">
+      Veja em qual etapa cada instancia parou e o resultado geral do processo.
+    </p>
+  </div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap">
+    <a href="/processos/<%= payload.process.id %>" class="wf-btn-secondary"><i class="bi bi-arrow-left"></i> Voltar ao processo</a>
+    <a href="/processos/<%= payload.process.id %>/historico" class="wf-btn-secondary"><i class="bi bi-clock-history"></i> Historico</a>
+  </div>
+</div>
+
+<div class="wf-indicator-grid">
+  <div class="wf-indicator-card">
+    <p class="wf-indicator-label">Total</p>
+    <p class="wf-indicator-value" style="color:#202124"><%= total %></p>
+  </div>
+  <div class="wf-indicator-card">
+    <p class="wf-indicator-label">Concluidas</p>
+    <p class="wf-indicator-value" style="color:#1e8e3e"><%= concluidas %></p>
+  </div>
+  <div class="wf-indicator-card">
+    <p class="wf-indicator-label">Em andamento</p>
+    <p class="wf-indicator-value" style="color:#e37400"><%= emAndamento %></p>
+  </div>
+  <div class="wf-indicator-card">
+    <p class="wf-indicator-label">Com erro</p>
+    <p class="wf-indicator-value" style="color:#d93025"><%= comErro %></p>
+  </div>
+  <div class="wf-indicator-card">
+    <p class="wf-indicator-label">Taxa de sucesso</p>
+    <p class="wf-indicator-value" style="color:#1a73e8"><%= taxaSucesso %>%</p>
+  </div>
+</div>
+
+<div class="wf-filter-bar" style="margin-bottom:14px">
+  <form method="GET" action="/processos/<%= payload.process.id %>/instancias" style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;width:100%">
+    <div style="min-width:220px">
+      <label>Status</label>
+      <select name="status">
+        <option value="" <%= !filters.status ? 'selected' : '' %>>Todos</option>
+        <option value="EM_ANDAMENTO" <%= filters.status === 'EM_ANDAMENTO' ? 'selected' : '' %>>Em andamento</option>
+        <option value="CONCLUIDA" <%= filters.status === 'CONCLUIDA' ? 'selected' : '' %>>Concluida</option>
+        <option value="ERRO" <%= filters.status === 'ERRO' ? 'selected' : '' %>>Erro</option>
+        <option value="FALHA" <%= filters.status === 'FALHA' ? 'selected' : '' %>>Falha</option>
+      </select>
+    </div>
+    <button class="wf-btn-primary" type="submit"><i class="bi bi-funnel"></i> Filtrar</button>
+    <% if (filters.status) { %>
+      <a href="/processos/<%= payload.process.id %>/instancias" class="wf-btn-secondary">Limpar</a>
+    <% } %>
+  </form>
+</div>
+
+<div class="wf-panel" style="padding:0">
+  <table class="wf-table" style="margin:0">
+    <thead>
+      <tr>
+        <th style="width:92px">Instancia</th>
+        <th style="width:140px">Status</th>
+        <th style="width:180px">Solicitante</th>
+        <th style="width:150px">Inicio</th>
+        <th style="width:150px">Fim</th>
+        <th>Linha do fluxo</th>
+        <th style="width:240px">Parada atual</th>
+      </tr>
+    </thead>
+    <tbody>
+      <% if (!payload.result.data.length) { %>
+        <tr>
+          <td colspan="7" style="text-align:center;padding:32px;color:#5f6368">
+            <i class="bi bi-inbox" style="font-size:2rem;color:#dadce0;display:block;margin-bottom:8px"></i>
+            Nenhuma instancia encontrada para este filtro.
+          </td>
+        </tr>
+      <% } %>
+
+      <% payload.result.data.forEach(function(item){ %>
+        <% const steps = item.progress && item.progress.steps ? item.progress.steps : []; %>
+        <tr>
+          <td>
+            <a href="/solicitacoes/<%= item.id %>" style="font-weight:700;color:#1a73e8;text-decoration:none">#<%= item.id %></a>
+          </td>
+          <td>
+            <span class="<%= badgeClass(item.status) %>"><%= item.status %></span>
+          </td>
+          <td><%= item.solicitante || '-' %></td>
+          <td><%= __fmtDateTime(item.started_at) %></td>
+          <td><%= __fmtDateTime(item.ended_at) %></td>
+          <td>
+            <% if (steps.length) { %>
+              <div class="wf-step-line" style="margin:0">
+                <% steps.forEach(function(step){ %>
+                  <div class="wf-step-point <%= step.state === 'DONE' ? 'is-done' : (step.state === 'CURRENT' ? 'is-current' : '') %>" title="<%= step.name %>"></div>
+                <% }) %>
+              </div>
+            <% } else { %>
+              <span style="font-size:.82rem;color:#9aa0a6">Sem trilha disponivel</span>
+            <% } %>
+          </td>
+          <td style="font-size:.82rem;color:#5f6368"><%= item.progress && item.progress.summary_text ? item.progress.summary_text : '-' %></td>
+        </tr>
+      <% }) %>
+    </tbody>
+  </table>
+</div>
+
+<div style="margin-top:14px;font-size:.82rem;color:#5f6368">
+  Exibindo <strong><%= payload.result.data.length %></strong> de <strong><%= payload.result.total %></strong> instancia(s).
+</div>
+
+<%- include('../partials/shellEnd') %>

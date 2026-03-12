@@ -1,9 +1,9 @@
 <%- include('../partials/shellStart', {
-  pageTitle,
+  pageTitle: 'Central de Tarefas',
   pageDescription,
   user,
   currentPath,
-  breadcrumbs: [{ label: 'Minhas Tarefas' }]
+  breadcrumbs: [{ label: 'Central de Tarefas' }]
 }) %>
 
 <%
@@ -31,68 +31,90 @@
         if (Number.isNaN(d.getTime())) return '';
         return String(d.getTime());
       };
+
+  const currentStatus = filters.status || '';
 %>
 
-<div class="wf-panel mb-4">
-  <form id="taskFilterForm" class="grid md:grid-cols-4 gap-2 items-end">
-    <div>
-      <label class="block text-xs font-semibold mb-1">Processo ID</label>
-      <input name="processoId" value="<%= filters.processoId %>" class="w-full px-3 py-2 rounded-xl border border-slate-300" placeholder="ID" />
-    </div>
+<!-- Page header -->
+<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+  <h2 style="margin:0;font-size:20px;font-weight:700;color:#202124">Central de Tarefas</h2>
+  <span style="font-size:13px;color:#5f6368"><%= result.total %> tarefa(s)</span>
+</div>
 
-    <div>
-      <label class="block text-xs font-semibold mb-1">Status</label>
-      <select name="status" class="w-full px-3 py-2 rounded-xl border border-slate-300">
-        <option value="">Todos</option>
-        <option value="MINHAS_TAREFAS" <%= filters.status === 'MINHAS_TAREFAS' ? 'selected' : '' %>>Minhas tarefas</option>
-        <option value="EM_ANDAMENTO" <%= filters.status === 'EM_ANDAMENTO' ? 'selected' : '' %>>Em andamento</option>
-        <option value="CONCLUIDA" <%= filters.status === 'CONCLUIDA' ? 'selected' : '' %>>Concluidas</option>
-      </select>
-    </div>
+<!-- Fluig-style tabs -->
+<div class="wf-tabs">
+  <a href="/tarefas" class="wf-tab <%= !currentStatus ? 'active' : '' %>">Todas</a>
+  <a href="/tarefas?status=MINHAS_TAREFAS&processoId=<%= filters.processoId %>&search=<%= filters.search %>" class="wf-tab <%= currentStatus === 'MINHAS_TAREFAS' ? 'active' : '' %>">A concluir</a>
+  <a href="/tarefas?status=EM_ANDAMENTO&processoId=<%= filters.processoId %>&search=<%= filters.search %>" class="wf-tab <%= currentStatus === 'EM_ANDAMENTO' ? 'active' : '' %>">Em andamento</a>
+  <a href="/tarefas?status=CONCLUIDA&processoId=<%= filters.processoId %>&search=<%= filters.search %>" class="wf-tab <%= currentStatus === 'CONCLUIDA' ? 'active' : '' %>">Concluidas</a>
+</div>
 
-    <div>
-      <label class="block text-xs font-semibold mb-1">Pesquisa</label>
-      <input name="search" value="<%= filters.search %>" class="w-full px-3 py-2 rounded-xl border border-slate-300" placeholder="processo, etapa, solicitante" />
+<!-- Filters -->
+<div class="wf-filter-bar">
+  <form id="taskFilterForm" style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;width:100%">
+    <input type="hidden" name="status" value="<%= filters.status %>" />
+    <div style="min-width:120px">
+      <label>Processo</label>
+      <input name="processoId" value="<%= filters.processoId %>" placeholder="ID do processo" />
     </div>
-
-    <button class="px-4 py-2 rounded-xl bg-ciniBlue text-white">Filtrar</button>
+    <div style="flex:1;min-width:200px">
+      <label>Pesquisar</label>
+      <input name="search" value="<%= filters.search %>" placeholder="Processo, atividade ou solicitante" />
+    </div>
+    <button class="wf-btn-primary" type="submit"><i class="bi bi-search"></i> Filtrar</button>
   </form>
 </div>
 
-<div class="wf-panel">
-  <div class="overflow-auto">
-    <table class="w-full text-sm">
-      <thead>
-        <tr class="text-left border-b border-slate-200">
-          <th class="py-2 pr-3">Processo</th>
-          <th class="py-2 pr-3">Solicitacao</th>
-          <th class="py-2 pr-3">Atividade atual</th>
-          <th class="py-2 pr-3">Data criacao</th>
-          <th class="py-2 pr-3">Prazo</th>
-          <th class="py-2 pr-3">Status</th>
-          <th class="py-2 pr-3">Acoes</th>
+<!-- Task list -->
+<div class="wf-panel" style="padding:0;overflow:hidden">
+  <table class="wf-table">
+    <thead>
+      <tr>
+        <th>Processo</th>
+        <th>Solicitacao</th>
+        <th>Atividade</th>
+        <th>Data</th>
+        <th>Prazo (SLA)</th>
+        <th>Status</th>
+        <th style="text-align:right">Acao</th>
+      </tr>
+    </thead>
+    <tbody>
+      <% if (!result.data.length) { %>
+        <tr>
+          <td colspan="7" style="text-align:center;padding:40px;color:#5f6368">
+            <i class="bi bi-inbox" style="font-size:32px;color:#dadce0;display:block;margin-bottom:8px"></i>
+            Nenhuma tarefa encontrada para os filtros informados.
+          </td>
         </tr>
-      </thead>
-      <tbody>
-        <% if (!result.data.length) { %>
-          <tr><td colspan="7" class="py-4 text-slate-500">Nenhuma tarefa pendente para os filtros informados.</td></tr>
-        <% } %>
-        <% result.data.forEach(function(task){ %>
-          <tr class="border-b border-slate-100">
-            <td class="py-3 pr-3"><%= task.processo_nome %></td>
-            <td class="py-3 pr-3">#<%= task.instancia_processo_id %></td>
-            <td class="py-3 pr-3 font-semibold"><%= task.nome_etapa %></td>
-            <td class="py-3 pr-3"><%= __fmtDateTime(task.created_at) %></td>
-            <td class="py-3 pr-3"><span class="sla-badge" data-created-at-ms="<%= __toEpochMs(task.created_at) %>" data-completed-at-ms="<%= __toEpochMs(task.completed_at) %>" data-status="<%= task.status || '' %>" data-sla-hours="<%= task.sla_horas || 24 %>"></span></td>
-            <td class="py-3 pr-3"><span class="px-2 py-1 rounded-lg bg-slate-100"><%= task.status %></span></td>
-            <td class="py-3 pr-3"><a href="/tarefas/<%= task.id %>" class="px-3 py-1 rounded-lg border border-cyan-300 text-cyan-700">Abrir tarefa</a></td>
-          </tr>
-        <% }) %>
-      </tbody>
-    </table>
-  </div>
+      <% } %>
+      <% result.data.forEach(function(task){ %>
+        <tr style="cursor:pointer" onclick="window.location='/tarefas/<%= task.id %>'">
+          <td>
+            <strong style="display:block"><%= task.processo_nome %></strong>
+          </td>
+          <td><span class="wf-badge wf-badge-blue">#<%= task.instancia_processo_id %></span></td>
+          <td><strong><%= task.nome_etapa %></strong></td>
+          <td><%= __fmtDateTime(task.created_at) %></td>
+          <td>
+            <span class="sla-badge"
+              data-created-at-ms="<%= __toEpochMs(task.created_at) %>"
+              data-completed-at-ms="<%= __toEpochMs(task.completed_at) %>"
+              data-status="<%= task.status || '' %>"
+              data-sla-hours="<%= task.sla_horas || 24 %>">
+            </span>
+          </td>
+          <td>
+            <% const statusClass = task.status === 'CONCLUIDA' ? 'wf-badge-green' : (task.status === 'MINHAS_TAREFAS' ? 'wf-badge-yellow' : 'wf-badge-blue'); %>
+            <span class="wf-badge <%= statusClass %>"><%= task.status_label || task.status %></span>
+          </td>
+          <td style="text-align:right">
+            <a href="/tarefas/<%= task.id %>" class="wf-btn-primary" style="font-size:12px;padding:5px 14px">Abrir</a>
+          </td>
+        </tr>
+      <% }) %>
+    </tbody>
+  </table>
 </div>
-
-<div class="mt-4 text-sm text-slate-500">Total de cards: <strong><%= result.total %></strong></div>
 
 <%- include('../partials/shellEnd', { pageScript: '/workflow-assets/js/tasks-kanban.js' }) %>

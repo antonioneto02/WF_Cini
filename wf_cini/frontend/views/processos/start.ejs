@@ -6,13 +6,22 @@
   breadcrumbs: [{ label: 'Processos', href: '/processos' }, { label: details.process.codigo, href: '/processos/' + details.process.id }, { label: 'Iniciar processo' }]
 }) %>
 
-<div class="grid lg:grid-cols-3 gap-4">
-  <div class="wf-panel lg:col-span-2">
-    <h3 class="font-semibold mb-3">Formulario inicial</h3>
+<!-- Page header -->
+<div style="display:flex;align-items:center;gap:12px;margin-bottom:20px">
+  <a href="/processos/<%= details.process.id %>" class="wf-btn-secondary" style="padding:6px 10px" title="Voltar"><i class="bi bi-arrow-left"></i></a>
+  <div>
+    <h2 style="margin:0;font-size:1.15rem;font-weight:600;color:#202124">Iniciar processo</h2>
+    <p style="margin:2px 0 0;font-size:.85rem;color:#5f6368"><%= details.process.nome %></p>
+  </div>
+</div>
 
-    <div class="mb-3 max-w-sm">
-      <label class="block text-sm font-semibold mb-1">Formulario</label>
-      <select id="startFormSelect" class="w-full px-3 py-2 rounded-xl border border-slate-300">
+<div style="display:grid;grid-template-columns:2fr 1fr;gap:16px">
+  <div class="wf-panel">
+    <h3 style="font-size:.95rem;font-weight:600;margin:0 0 14px;color:#202124">Formulario inicial</h3>
+
+    <div style="margin-bottom:14px;max-width:320px">
+      <label class="wf-form-label">Formulario</label>
+      <select id="startFormSelect" class="wf-form-input">
         <option value="">Sem formulario</option>
         <% details.forms.forEach(function(form){ %>
           <option value="<%= form.id %>"><%= form.nome %></option>
@@ -20,26 +29,26 @@
       </select>
     </div>
 
-    <form id="startProcessForm" data-process-id="<%= details.process.id %>" class="grid gap-3">
-      <div id="startDynamicFormRoot" class="grid gap-3"></div>
+    <form id="startProcessForm" data-process-id="<%= details.process.id %>" style="display:grid;gap:14px">
+      <div id="startDynamicFormRoot" style="display:grid;gap:14px"></div>
 
       <div>
-        <label class="block text-sm font-semibold mb-1">Payload complementar (JSON)</label>
-        <textarea name="extraPayload" rows="5" class="w-full px-3 py-2 rounded-xl border border-slate-300 font-mono text-xs" placeholder='{"observacao":"inicio manual"}'></textarea>
+        <label class="wf-form-label">Payload complementar (JSON)</label>
+        <textarea name="extraPayload" rows="5" class="wf-form-input" style="font-family:monospace;font-size:.82rem;resize:vertical" placeholder='{"observacao":"inicio manual"}'></textarea>
       </div>
 
-      <div class="flex justify-end">
-        <button class="px-4 py-2 rounded-xl bg-ciniTeal text-white">Iniciar processo</button>
+      <div style="display:flex;justify-content:flex-end;padding-top:12px;border-top:1px solid #e0e0e0">
+        <button type="submit" class="wf-btn-primary"><i class="bi bi-play-fill"></i> Iniciar processo</button>
       </div>
     </form>
   </div>
 
-  <div class="wf-panel">
-    <h3 class="font-semibold mb-2">Dicas</h3>
-    <ul class="text-sm text-slate-600 space-y-2">
-      <li>- O processo precisa ter versao publicada.</li>
-      <li>- Se houver formulario vinculado, os campos vao para o payload inicial.</li>
-      <li>- A primeira UserTask do fluxo sera criada automaticamente.</li>
+  <div class="wf-panel" style="align-self:start">
+    <h3 style="font-size:.95rem;font-weight:600;margin:0 0 10px;color:#202124"><i class="bi bi-info-circle"></i> Dicas</h3>
+    <ul style="font-size:.85rem;color:#5f6368;padding-left:16px;margin:0;display:grid;gap:6px">
+      <li>O processo precisa ter versao publicada.</li>
+      <li>Se houver formulario vinculado, os campos vao para o payload inicial.</li>
+      <li>A primeira UserTask do fluxo sera criada automaticamente.</li>
     </ul>
   </div>
 </div>

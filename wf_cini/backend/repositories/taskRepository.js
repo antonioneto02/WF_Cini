@@ -23,7 +23,8 @@ function buildUserVisibilityClause(userKeys, params) {
 
   return `
        AND (
-          UPPER(LTRIM(RTRIM(ISNULL(t.responsavel, 'ANY')))) = 'ANY'
+         UPPER(LTRIM(RTRIM(ISNULL(t.responsavel, '')))) = ''
+         OR UPPER(LTRIM(RTRIM(ISNULL(t.responsavel, '')))) = 'ANY'
           OR ${parts.join('\n          OR ')}
        )`;
 }
@@ -39,6 +40,8 @@ async function createTask({
   formConfigJson,
   status = 'MINHAS_TAREFAS',
 }) {
+  const normalizedResponsavel = normalizeIdentifier(responsavel) || null;
+
   const result = await db.query(
     `INSERT INTO tarefas
       (instancia_processo_id, processo_id, versao_processo_id, elemento_id, nome_etapa,
@@ -52,7 +55,7 @@ async function createTask({
       versaoProcessoId,
       elementId,
       nomeEtapa,
-      responsavel,
+      responsavel: normalizedResponsavel,
       slaHoras,
       formConfigJson,
       status,
@@ -65,7 +68,9 @@ async function createTask({
 async function getTaskById(taskId) {
   const rows = await db.query(
     `SELECT t.id, t.instancia_processo_id, t.processo_id, t.versao_processo_id,
-            t.elemento_id AS element_id, t.nome_etapa, t.responsavel, t.sla_horas,
+            t.elemento_id AS element_id, t.nome_etapa,
+            CASE WHEN UPPER(LTRIM(RTRIM(ISNULL(t.responsavel, '')))) = 'ANY' THEN '' ELSE ISNULL(t.responsavel, '') END AS responsavel,
+            t.sla_horas,
             t.configuracao_formulario_json AS form_config_json, t.resposta_json,
             t.acao_final, t.observacao_final, t.status, t.iniciado_em AS started_at,
             t.concluido_em AS completed_at, t.concluido_por AS completed_by, t.dt_criacao AS created_at,
@@ -121,7 +126,10 @@ async function listKanbanTasks({
        )`;
 
   const rows = await db.query(
-    `SELECT t.id, t.nome_etapa, t.status, t.responsavel, t.sla_horas,
+      `SELECT t.id, t.nome_etapa, t.status,
+        CASE WHEN UPPER(LTRIM(RTRIM(ISNULL(t.responsavel, '')))) = 'ANY' THEN '' ELSE ISNULL(t.responsavel, '') END AS responsavel,
+        t.sla_horas,
+        t.elemento_id AS element_id, t.versao_processo_id,
             t.dt_criacao AS created_at, t.iniciado_em AS started_at, t.concluido_em AS completed_at, t.instancia_processo_id,
             p.nome AS processo_nome, i.solicitante
      ${baseFromWhere}
@@ -190,6 +198,21 @@ async function findOpenTasksByInstance(instanciaId) {
   );
 }
 
+async function listTasksByInstance(instanciaId) {
+  return db.query(
+    `SELECT t.id, t.elemento_id AS element_id, t.nome_etapa,
+            CASE WHEN UPPER(LTRIM(RTRIM(ISNULL(t.responsavel, '')))) = 'ANY' THEN '' ELSE ISNULL(t.responsavel, '') END AS responsavel,
+            t.sla_horas,
+            t.status, t.acao_final, t.observacao_final,
+            t.iniciado_em AS started_at, t.concluido_em AS completed_at,
+            t.concluido_por AS completed_by, t.dt_criacao AS created_at
+     FROM tarefas t
+     WHERE t.instancia_processo_id = :instanciaId
+     ORDER BY t.dt_criacao ASC`,
+    { instanciaId }
+  );
+}
+
 module.exports = {
   createTask,
   getTaskById,
@@ -198,4 +221,5 @@ module.exports = {
   completeTask,
   saveTaskDraft,
   findOpenTasksByInstance,
+  listTasksByInstance,
 };

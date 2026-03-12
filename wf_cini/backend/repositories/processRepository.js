@@ -1,6 +1,6 @@
 const db = require('../models/db');
 
-async function listProcesses({ page = 1, pageSize = 10, search = '' }) {
+async function listProcesses({ page = 1, pageSize = 10, search = '', createdBy = null }) {
   const safePage = Math.max(1, Number(page) || 1);
   const safePageSize = Math.max(1, Number(pageSize) || 10);
   const offset = (safePage - 1) * safePageSize;
@@ -9,7 +9,12 @@ async function listProcesses({ page = 1, pageSize = 10, search = '' }) {
   const rows = await db.query(
     `SELECT p.id, p.nome, p.codigo, p.descricao, p.status,
             p.criado_por AS created_by, p.dt_criacao AS created_at,
-            v.versao, v.status AS versao_status, v.id AS versao_id
+            v.versao, v.status AS versao_status, v.id AS versao_id,
+            i.id AS latest_instance_id,
+            i.status AS latest_instance_status,
+            i.elemento_atual_id AS latest_current_element_id,
+            i.versao_processo_id AS latest_instance_version_id,
+            i.iniciado_em AS latest_started_at
      FROM processos p
      LEFT JOIN versoes_processo v
        ON v.processo_id = p.id
@@ -19,17 +24,26 @@ async function listProcesses({ page = 1, pageSize = 10, search = '' }) {
           WHERE vv.processo_id = p.id
           ORDER BY vv.versao DESC
       )
-     WHERE p.nome LIKE :likeSearch OR p.codigo LIKE :likeSearch
+        LEFT JOIN instancias_processo i
+         ON i.id = (
+           SELECT TOP 1 ii.id
+           FROM instancias_processo ii
+           WHERE ii.processo_id = p.id
+           ORDER BY ii.dt_criacao DESC
+         )
+     WHERE (p.nome LIKE :likeSearch OR p.codigo LIKE :likeSearch)
+       AND (:createdBy IS NULL OR UPPER(LTRIM(RTRIM(ISNULL(p.criado_por, '')))) = UPPER(LTRIM(RTRIM(ISNULL(:createdBy, '')))))
      ORDER BY p.dt_criacao DESC
         OFFSET :offset ROWS FETCH NEXT :limit ROWS ONLY`,
-    { likeSearch, limit: safePageSize, offset }
+       { likeSearch, createdBy, limit: safePageSize, offset }
   );
 
   const countRows = await db.query(
     `SELECT COUNT(*) AS total
      FROM processos p
-     WHERE p.nome LIKE :likeSearch OR p.codigo LIKE :likeSearch`,
-    { likeSearch }
+     WHERE (p.nome LIKE :likeSearch OR p.codigo LIKE :likeSearch)
+       AND (:createdBy IS NULL OR UPPER(LTRIM(RTRIM(ISNULL(p.criado_por, '')))) = UPPER(LTRIM(RTRIM(ISNULL(:createdBy, '')))))`,
+    { likeSearch, createdBy }
   );
 
   return {

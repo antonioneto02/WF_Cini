@@ -2,6 +2,7 @@ const taskRepository = require('../repositories/taskRepository');
 const historyRepository = require('../repositories/historyRepository');
 const formRepository = require('../repositories/formRepository');
 const protheusUserRepository = require('../repositories/protheusUserRepository');
+const workflowLabelService = require('./workflowLabelService');
 
 function normalizeIdentifier(value) {
   return String(value || '').trim().toUpperCase();
@@ -31,10 +32,16 @@ async function resolveUserTaskKeys(user) {
 async function listKanbanTasks(query) {
   const safeQuery = query || {};
   const userKeys = await resolveUserTaskKeys(safeQuery.user);
-  return taskRepository.listKanbanTasks({
+  const result = await taskRepository.listKanbanTasks({
     ...safeQuery,
     userKeys,
   });
+
+  const enrichedData = await workflowLabelService.enrichTasksWithFriendlyNames(result.data || []);
+  return {
+    ...result,
+    data: enrichedData,
+  };
 }
 
 function splitByKanbanStatus(tasks) {
@@ -55,24 +62,27 @@ async function getTaskDetails(taskId) {
   const task = await taskRepository.getTaskById(taskId);
   if (!task) throw new Error('Tarefa nao encontrada');
 
-  const history = await historyRepository.listHistoryByInstance(task.instancia_processo_id);
+  const enrichedTaskList = await workflowLabelService.enrichTasksWithFriendlyNames([task]);
+  const enrichedTask = enrichedTaskList[0] || task;
+
+  const history = await historyRepository.listHistoryByInstance(enrichedTask.instancia_processo_id);
 
   let form = null;
   let responses = [];
 
-  if (task.form_config_json) {
+  if (enrichedTask.form_config_json) {
     try {
-      const cfg = JSON.parse(task.form_config_json);
+      const cfg = JSON.parse(enrichedTask.form_config_json);
       if (cfg.formId) {
         form = await formRepository.getFormById(cfg.formId);
       }
     } catch (_) {}
   }
 
-  responses = await formRepository.listResponsesByInstance(task.instancia_processo_id);
+  responses = await formRepository.listResponsesByInstance(enrichedTask.instancia_processo_id);
 
   return {
-    task,
+    task: enrichedTask,
     history,
     form,
     responses,
@@ -97,10 +107,23 @@ async function saveTaskDraft({ taskId, observacao, response, user }) {
   return taskRepository.getTaskById(taskId);
 }
 
+async function canUserHandleTask(taskId, user) {
+  const task = await taskRepository.getTaskById(taskId);
+  if (!task) return false;
+
+  const allowedKeys = await resolveUserTaskKeys(user);
+  if (!allowedKeys.length) return false;
+
+  const responsible = normalizeIdentifier(task.responsavel || '');
+  if (!responsible || responsible === 'ANY') return true;
+  return allowedKeys.includes(responsible);
+}
+
 module.exports = {
   listKanbanTasks,
   splitByKanbanStatus,
   getTaskDetails,
   moveTask,
   saveTaskDraft,
+  canUserHandleTask,
 };

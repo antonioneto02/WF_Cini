@@ -1,0 +1,72 @@
+<%- include('../partials/shellStart', {
+  pageTitle,
+  pageDescription,
+  user,
+  currentPath,
+  breadcrumbs: [{ label: 'Automacoes' }]
+}) %>
+
+<!-- Page header -->
+<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+  <div>
+    <h2 style="font-size:1.25rem;font-weight:600;color:#202124;margin:0">Automacoes</h2>
+    <p style="font-size:.85rem;color:#5f6368;margin:4px 0 0">Gerencie automacoes externas vinculadas a Service Tasks</p>
+  </div>
+</div>
+
+<!-- Filter -->
+<div class="wf-filter-bar" style="margin-bottom:16px">
+  <form style="display:flex;gap:10px;align-items:center;width:100%">
+    <input name="search" value="<%= filters.search %>" class="wf-filter-input" style="flex:1" placeholder="Pesquisar automacao..." />
+    <button type="submit" class="wf-btn-primary" style="padding:7px 18px"><i class="bi bi-search"></i> Filtrar</button>
+  </form>
+</div>
+
+<!-- Create form -->
+<div class="wf-panel" style="margin-bottom:16px">
+  <h3 style="font-size:.95rem;font-weight:600;margin:0 0 14px;color:#202124"><i class="bi bi-plus-circle"></i> Cadastrar automacao</h3>
+  <form id="automationCreateForm" style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+    <div><label class="wf-form-label">Nome</label><input name="nome" required class="wf-form-input" /></div>
+    <div><label class="wf-form-label">Metodo</label><select name="metodo_http" class="wf-form-input"><option>POST</option><option>GET</option><option>PUT</option><option>PATCH</option></select></div>
+    <div style="grid-column:span 2"><label class="wf-form-label">Endpoint</label><input name="endpoint_url" required class="wf-form-input" placeholder="https://api.exemplo.com/automacao" /></div>
+    <div><label class="wf-form-label">Auth</label><select name="auth_tipo" class="wf-form-input"><option value="NONE">NONE</option><option value="BEARER">BEARER</option><option value="API_KEY">API_KEY</option></select></div>
+    <div><label class="wf-form-label">Valor Auth</label><input name="auth_valor" class="wf-form-input" /></div>
+    <div><label class="wf-form-label">Timeout (ms)</label><input type="number" name="timeout_ms" value="8000" class="wf-form-input" /></div>
+    <div><label class="wf-form-label">Tentativas (retry)</label><input type="number" name="retry_count" value="0" class="wf-form-input" /></div>
+    <div style="grid-column:span 2"><label class="wf-form-label">Descricao</label><textarea name="descricao" rows="2" class="wf-form-input" style="resize:vertical"></textarea></div>
+    <div style="grid-column:span 2;display:flex;justify-content:flex-end;padding-top:8px;border-top:1px solid #e0e0e0">
+      <button type="submit" class="wf-btn-primary"><i class="bi bi-check-lg"></i> Salvar automacao</button>
+    </div>
+  </form>
+</div>
+
+<!-- Table -->
+<div class="wf-panel" style="padding:0">
+  <table class="wf-table" style="margin:0">
+    <thead><tr><th>Nome</th><th>Endpoint</th><th>Metodo</th><th>Auth</th><th style="width:150px">Acoes</th></tr></thead>
+    <tbody>
+      <% if (!result.data.length) { %>
+        <tr><td colspan="5" style="text-align:center;padding:32px;color:#5f6368"><i class="bi bi-inbox" style="font-size:2rem;color:#dadce0;display:block;margin-bottom:8px"></i>Nenhuma automacao cadastrada.</td></tr>
+      <% } %>
+      <% result.data.forEach(function(item){ %>
+        <tr>
+          <td>
+            <span style="font-weight:500"><%= item.nome %></span>
+            <br><span style="font-size:.78rem;color:#5f6368"><%= item.descricao || '-' %></span>
+          </td>
+          <td style="font-size:.85rem;color:#5f6368"><%= item.endpoint_url %></td>
+          <td><span class="wf-badge-blue"><%= item.metodo_http %></span></td>
+          <td><%= item.auth_tipo %></td>
+          <td>
+            <div style="display:flex;gap:6px">
+              <button type="button" class="automation-test-btn wf-btn-secondary" style="padding:4px 10px;font-size:.8rem" data-id="<%= item.id %>"><i class="bi bi-play"></i> Testar</button>
+              <button type="button" class="automation-delete-btn wf-btn-danger" style="padding:4px 10px;font-size:.8rem" data-id="<%= item.id %>"><i class="bi bi-trash"></i></button>
+            </div>
+          </td>
+        </tr>
+      <% }) %>
+    </tbody>
+  </table>
+</div>
+
+<%- include('../partials/shellEnd', { pageScript: '/workflow-assets/js/automations.js' }) %>

@@ -1,0 +1,82 @@
+<%- include('../partials/shellStart', {
+  pageTitle,
+  pageDescription,
+  user,
+  currentPath,
+  breadcrumbs: [{ label: 'Administracao' }, { label: 'Limpeza Total' }]
+}) %>
+
+<div class="wf-panel" style="max-width:980px;margin-bottom:16px;padding:14px 18px;border:1px solid #f5c2c7;background:#fff5f6">
+  <p style="margin:0 0 6px;font-size:.95rem;font-weight:700;color:#842029">Zona de risco: exclusao irreversivel</p>
+  <p style="margin:0;font-size:.86rem;color:#842029">
+    Esta acao remove tarefas, processos, formularios, modelos (versoes), historicos e referencias de notificacoes/comentarios.
+    Use apenas quando realmente for necessaria uma limpeza completa do ambiente.
+  </p>
+</div>
+
+<div class="wf-panel" style="max-width:980px">
+  <h3 style="margin:0 0 10px;font-size:1rem;color:#202124">Executar limpeza total do workflow</h3>
+  <p style="margin:0 0 14px;font-size:.85rem;color:#5f6368">
+    Para confirmar, voce precisara aceitar o alerta e digitar exatamente <strong>DELETAR TUDO</strong>.
+  </p>
+
+  <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+    <button type="button" id="wfDeleteAllDataBtn" class="wf-btn-danger">
+      <i class="bi bi-trash3"></i> Deletar tudo
+    </button>
+    <span id="wfDeleteAllDataStatus" style="font-size:.82rem;color:#5f6368"></span>
+  </div>
+</div>
+
+<script>
+  (function () {
+    var button = document.getElementById('wfDeleteAllDataBtn');
+    var statusEl = document.getElementById('wfDeleteAllDataStatus');
+    if (!button) return;
+
+    var confirmPhrase = 'DELETAR TUDO';
+
+    button.addEventListener('click', async function () {
+      var approved = window.confirm('Esta acao vai apagar todos os dados do workflow e nao pode ser desfeita. Deseja continuar?');
+      if (!approved) return;
+
+      var typed = window.prompt('Digite "' + confirmPhrase + '" para confirmar a limpeza total:', '');
+      if (typed === null) return;
+
+      if (String(typed).trim().toUpperCase() !== confirmPhrase) {
+        window.alert('Confirmacao invalida. Nenhum dado foi removido.');
+        return;
+      }
+
+      var previousLabel = button.innerHTML;
+      button.disabled = true;
+      button.innerHTML = '<i class="bi bi-hourglass-split"></i> Excluindo...';
+      if (statusEl) statusEl.textContent = 'Executando limpeza total...';
+
+      try {
+        var response = await fetch('/api/admin/limpeza-total', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ confirmText: typed })
+        });
+
+        var payload = await response.json().catch(function () { return {}; });
+        if (!response.ok || !payload.ok) {
+          throw new Error(payload.message || 'Falha ao executar limpeza total');
+        }
+
+        var deletedTotal = Number(payload.deletedTotal || 0);
+        if (statusEl) statusEl.textContent = 'Concluido. Registros removidos: ' + deletedTotal + '.';
+        window.alert('Limpeza total concluida com sucesso. Registros removidos: ' + deletedTotal + '.');
+      } catch (error) {
+        if (statusEl) statusEl.textContent = 'Falha: ' + (error && error.message ? error.message : 'erro inesperado');
+        window.alert(error && error.message ? error.message : 'Falha ao executar limpeza total');
+      } finally {
+        button.disabled = false;
+        button.innerHTML = previousLabel;
+      }
+    });
+  })();
+</script>
+
+<%- include('../partials/shellEnd', { pageScript: '' }) %>

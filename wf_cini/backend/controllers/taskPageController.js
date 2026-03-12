@@ -1,4 +1,6 @@
 const taskService = require('../services/taskService');
+const commentService = require('../services/commentService');
+const { getCurrentUser } = require('../utils/requestUser');
 
 async function index(req, res, next) {
   try {
@@ -34,12 +36,29 @@ async function index(req, res, next) {
 async function detalhes(req, res, next) {
   try {
     const taskId = Number(req.params.id);
+    const currentUser = getCurrentUser(req);
+    const canHandle = await taskService.canUserHandleTask(taskId, currentUser);
+    if (!canHandle) {
+      return res.status(403).render('erpShell', {
+        pageTitle: 'Acesso negado',
+        pageDescription: 'Voce nao possui permissao para abrir esta tarefa',
+        user: res.locals.user,
+      });
+    }
+
     const payload = await taskService.getTaskDetails(taskId);
+    const comments = await commentService.listComments({
+      user: currentUser,
+      tarefaId: taskId,
+      instanciaId: payload.task.instancia_processo_id,
+      limit: 120,
+    });
 
     return res.render('tarefas/show', {
       pageTitle: `Tarefa #${taskId}`,
       pageDescription: payload.task.nome_etapa,
       payload,
+      comments,
     });
   } catch (err) {
     return next(err);

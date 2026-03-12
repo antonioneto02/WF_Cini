@@ -15,6 +15,13 @@
           nome: form.nome.value.trim(),
           descricao: form.descricao.value.trim(),
           status: form.status.value,
+          permissions: {
+            viewers: form.viewers ? form.viewers.value : '',
+            editors: form.editors ? form.editors.value : '',
+            modelers: form.modelers ? form.modelers.value : '',
+            executors: form.executors ? form.executors.value : '',
+            admins: form.admins ? form.admins.value : '',
+          },
         }),
       });
 

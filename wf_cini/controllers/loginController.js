@@ -1,5 +1,6 @@
 const axios = require('axios');
 const dotenv = require('dotenv');
+const protheusUserRepository = require('../backend/repositories/protheusUserRepository');
 
 dotenv.config();
 
@@ -47,8 +48,26 @@ async function validaLogin(username, password, res, req) {
       maxAge: 43200000,
     });
 
+    let protheusCode = null;
+    try {
+      const mappedUser = await protheusUserRepository.findUserByIdentifier(username);
+      protheusCode = mappedUser && mappedUser.codigo ? String(mappedUser.codigo).trim() : null;
+    } catch (_) {
+      protheusCode = null;
+    }
+
+    if (protheusCode) {
+      res.cookie('user_code', protheusCode, {
+        httpOnly: true,
+        secure: false,
+        sameSite: 'lax',
+        maxAge: 43200000,
+      });
+    }
+
     if (req && req.session) {
       req.session.username = username;
+      if (protheusCode) req.session.user_code = protheusCode;
       req.session.lastActivity = Date.now();
     }
 

@@ -22,56 +22,90 @@
           minute: '2-digit',
         });
       };
+
+  const statusBadge = (s) => {
+    if (s === 'EM_ANDAMENTO') return 'wf-badge-blue';
+    if (s === 'CONCLUIDA')    return 'wf-badge-green';
+    if (s === 'CANCELADA')    return 'wf-badge-red';
+    return 'wf-badge-gray';
+  };
+
+  const statusLabel = (item) => item.status_label || (item.status === 'EM_ANDAMENTO' ? 'Em andamento' : item.status === 'CONCLUIDA' ? 'Concluida' : item.status);
 %>
 
-<div class="wf-panel mb-4">
-  <form class="grid md:grid-cols-3 gap-2 items-end">
-    <div>
-      <label class="block text-xs font-semibold mb-1">Processo ID</label>
-      <input name="processoId" value="<%= filters.processoId %>" class="w-full px-3 py-2 rounded-xl border border-slate-300" />
-    </div>
-    <div>
-      <label class="block text-xs font-semibold mb-1">Status</label>
-      <select name="status" class="w-full px-3 py-2 rounded-xl border border-slate-300">
-        <option value="">Todos</option>
-        <option value="EM_ANDAMENTO" <%= filters.status === 'EM_ANDAMENTO' ? 'selected' : '' %>>EM_ANDAMENTO</option>
-        <option value="CONCLUIDA" <%= filters.status === 'CONCLUIDA' ? 'selected' : '' %>>CONCLUIDA</option>
-      </select>
-    </div>
-    <button class="px-4 py-2 rounded-xl bg-ciniBlue text-white">Filtrar</button>
+<!-- Page header -->
+<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+  <div>
+    <h2 style="font-size:1.25rem;font-weight:600;color:#202124;margin:0">Solicitacoes</h2>
+    <p style="font-size:.85rem;color:#5f6368;margin:4px 0 0">Acompanhe todas as solicitacoes de processos</p>
+  </div>
+</div>
+
+<!-- Tabs: status filter -->
+<div class="wf-tabs" style="margin-bottom:0;border-radius:8px 8px 0 0">
+  <a href="/solicitacoes" class="wf-tab <%= !filters.status ? 'active' : '' %>">Todas</a>
+  <a href="/solicitacoes?status=EM_ANDAMENTO&processoId=<%= filters.processoId || '' %>" class="wf-tab <%= filters.status === 'EM_ANDAMENTO' ? 'active' : '' %>">Em andamento</a>
+  <a href="/solicitacoes?status=CONCLUIDA&processoId=<%= filters.processoId || '' %>" class="wf-tab <%= filters.status === 'CONCLUIDA' ? 'active' : '' %>">Concluidas</a>
+</div>
+
+<!-- Filter bar -->
+<div class="wf-filter-bar" style="border-radius:0">
+  <form style="display:flex;gap:10px;align-items:center;width:100%">
+    <input type="hidden" name="status" value="<%= filters.status || '' %>" />
+    <input name="processoId" value="<%= filters.processoId || '' %>" placeholder="Processo ID" class="wf-filter-input" style="max-width:160px" />
+    <input name="q" value="<%= filters.q || '' %>" placeholder="Buscar solicitacao..." class="wf-filter-input" style="flex:1" />
+    <button type="submit" class="wf-btn-primary" style="padding:7px 18px"><i class="bi bi-search"></i> Filtrar</button>
   </form>
 </div>
 
-<div class="wf-panel">
-  <div class="overflow-auto">
-    <table class="w-full text-sm">
+<!-- Table -->
+<div class="wf-panel" style="border-radius:0 0 8px 8px;margin-top:0;padding:0">
+  <div style="overflow:auto">
+    <table class="wf-table" style="margin:0">
       <thead>
-        <tr class="text-left border-b border-slate-200">
-          <th class="py-2 pr-3">Numero da solicitacao</th>
-          <th class="py-2 pr-3">Processo</th>
-          <th class="py-2 pr-3">Solicitante</th>
-          <th class="py-2 pr-3">Status</th>
-          <th class="py-2 pr-3">Data inicio</th>
-          <th class="py-2 pr-3">Atividade atual</th>
+        <tr>
+          <th style="width:80px">#</th>
+          <th>Processo</th>
+          <th>Solicitante</th>
+          <th>Status</th>
+          <th>Atividade atual</th>
+          <th>Data inicio</th>
+          <th style="width:90px">Acao</th>
         </tr>
       </thead>
       <tbody>
         <% if (!result.data.length) { %>
-          <tr><td colspan="6" class="py-4 text-slate-500">Nenhuma solicitacao encontrada.</td></tr>
+          <tr>
+            <td colspan="7" style="text-align:center;padding:48px 0">
+              <i class="bi bi-inbox" style="font-size:2.5rem;color:#dadce0"></i>
+              <p style="color:#5f6368;margin:8px 0 0">Nenhuma solicitacao encontrada.</p>
+            </td>
+          </tr>
         <% } %>
         <% result.data.forEach(function(item){ %>
-          <tr class="border-b border-slate-100">
-            <td class="py-3 pr-3 font-semibold">#<%= item.id %></td>
-            <td class="py-3 pr-3"><%= item.processo_nome %> (v<%= item.versao %>)</td>
-            <td class="py-3 pr-3"><%= item.solicitante || '-' %></td>
-            <td class="py-3 pr-3"><span class="px-2 py-1 rounded-lg bg-slate-100"><%= item.status %></span></td>
-            <td class="py-3 pr-3"><%= __fmtDateTime(item.started_at) %></td>
-            <td class="py-3 pr-3"><%= item.current_element_id || '-' %></td>
+          <tr onclick="window.location='/solicitacoes/<%= item.id %>'" style="cursor:pointer">
+            <td style="font-weight:600;color:var(--wf-primary)">#<%= item.id %></td>
+            <td><%= item.processo_nome %> <span style="color:#5f6368;font-size:.8rem">v<%= item.versao %></span></td>
+            <td><%= item.solicitante || '-' %></td>
+            <td><span class="<%= statusBadge(item.status) %>"><%= statusLabel(item) %></span></td>
+            <td><%= item.atividade_atual_nome || '-' %></td>
+            <td><%= __fmtDateTime(item.started_at) %></td>
+            <td>
+              <a href="/solicitacoes/<%= item.id %>" class="wf-btn-secondary" style="padding:4px 12px;font-size:.8rem" title="Visualizar">
+                <i class="bi bi-eye"></i> Abrir
+              </a>
+            </td>
           </tr>
         <% }) %>
       </tbody>
     </table>
   </div>
+
+  <% if (result.data.length) { %>
+    <div style="padding:12px 20px;border-top:1px solid #e0e0e0;font-size:.85rem;color:#5f6368">
+      Total: <strong><%= result.data.length %></strong> solicitaco<%= result.data.length === 1 ? '' : 'es' %>
+    </div>
+  <% } %>
 </div>
 
 <%- include('../partials/shellEnd', { pageScript: '' }) %>

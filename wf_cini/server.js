@@ -57,10 +57,14 @@ app.use((req, res, next) => {
   });
 
   res.locals.currentPath = req.path || '/';
+  const login = (req.session && req.session.username) || (req.cookies && req.cookies.username) || 'Usuario';
+  const normalizedLogin = String(login || '').trim().toUpperCase();
   res.locals.user = {
-    nome: (req.session && req.session.username) || (req.cookies && req.cookies.username) || 'Usuario',
+    nome: login,
     email: (req.session && req.session.user_email) || '',
     id: (req.session && req.session.user_id) || null,
+    login: normalizedLogin,
+    isDev: normalizedLogin === '000460',
   };
 
   // Global helpers for EJS views to keep all date rendering consistent.
@@ -92,6 +96,10 @@ function ensureAuth(req, res, next) {
 
   if (req.session && !req.session.username && req.cookies && req.cookies.username) {
     req.session.username = req.cookies.username;
+  }
+
+  if (req.session && !req.session.user_code && req.cookies && req.cookies.user_code) {
+    req.session.user_code = req.cookies.user_code;
   }
 
   return next();
@@ -147,6 +155,7 @@ app.get('/logout', (req, res) => {
     res.clearCookie('token');
     res.clearCookie('refresh_token');
     res.clearCookie('username');
+    res.clearCookie('user_code');
     if (req.session) {
       req.session.destroy(() => {});
     }

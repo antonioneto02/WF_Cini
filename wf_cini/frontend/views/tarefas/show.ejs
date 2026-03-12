@@ -3,7 +3,7 @@
   pageDescription,
   user,
   currentPath,
-  breadcrumbs: [{ label: 'Tarefas', href: '/tarefas' }, { label: '#' + payload.task.id }]
+  breadcrumbs: [{ label: 'Central de tarefas', href: '/tarefas' }, { label: '#' + payload.task.id }]
 }) %>
 
 <%
@@ -22,55 +22,163 @@
           minute: '2-digit',
         });
       };
+
+  const statusBadge = (s) => {
+    if (s === 'CONCLUIDA')    return 'wf-badge-green';
+    if (s === 'EM_ANDAMENTO') return 'wf-badge-blue';
+    return 'wf-badge-yellow';
+  };
+  const statusLabel = (s) => s === 'CONCLUIDA' ? 'Concluida' : s === 'EM_ANDAMENTO' ? 'Em andamento' : 'Pendente';
 %>
 
-<div class="grid lg:grid-cols-3 gap-4">
-  <div class="wf-panel lg:col-span-2">
-    <h2 class="text-lg font-semibold mb-2">Execucao da tarefa</h2>
-    <p class="text-sm text-slate-600 mb-3">Processo: <strong><%= payload.task.processo_nome %></strong></p>
+<!-- Task header -->
+<div class="wf-solic-header" style="margin-bottom:20px">
+  <div style="display:flex;align-items:center;gap:12px">
+    <a href="/tarefas" class="wf-btn-secondary" style="padding:6px 10px" title="Voltar"><i class="bi bi-arrow-left"></i></a>
+    <div>
+      <h2 style="margin:0;font-size:1.15rem;font-weight:600;color:#202124">
+        <%= payload.task.nome_etapa %> <span style="font-weight:400;color:#5f6368">#<%= payload.task.id %></span>
+      </h2>
+      <p style="margin:2px 0 0;font-size:.85rem;color:#5f6368">Processo: <strong><%= payload.task.processo_nome %></strong></p>
+    </div>
+  </div>
+  <span class="<%= statusBadge(payload.task.status) %>" style="font-size:.85rem;padding:5px 14px">
+    <%= payload.task.status_label || statusLabel(payload.task.status) %>
+  </span>
+</div>
 
-    <div class="grid md:grid-cols-2 gap-3 text-sm mb-4">
-      <div class="p-3 rounded-xl bg-slate-50 border border-slate-200"><strong>Atividade atual:</strong> <%= payload.task.nome_etapa %></div>
-      <div class="p-3 rounded-xl bg-slate-50 border border-slate-200"><strong>Status:</strong> <%= payload.task.status %></div>
-      <div class="p-3 rounded-xl bg-slate-50 border border-slate-200"><strong>Solicitante:</strong> <%= payload.task.solicitante || '-' %></div>
-      <div class="p-3 rounded-xl bg-slate-50 border border-slate-200"><strong>Data inicio:</strong> <%= __fmtDateTime(payload.task.started_at || payload.task.created_at) %></div>
+<!-- Metadata -->
+<div class="wf-solic-meta" style="margin-bottom:20px">
+  <div class="wf-solic-meta-item">
+    <span class="wf-solic-meta-label">Solicitante</span>
+    <span class="wf-solic-meta-value"><%= payload.task.solicitante || '-' %></span>
+  </div>
+  <div class="wf-solic-meta-item">
+    <span class="wf-solic-meta-label">Responsavel</span>
+    <span class="wf-solic-meta-value"><%= payload.task.responsavel || '-' %></span>
+  </div>
+  <div class="wf-solic-meta-item">
+    <span class="wf-solic-meta-label">Data inicio</span>
+    <span class="wf-solic-meta-value"><%= __fmtDateTime(payload.task.started_at || payload.task.created_at) %></span>
+  </div>
+  <div class="wf-solic-meta-item">
+    <span class="wf-solic-meta-label">Status</span>
+    <span class="wf-solic-meta-value"><span class="<%= statusBadge(payload.task.status) %>"><%= payload.task.status_label || statusLabel(payload.task.status) %></span></span>
+  </div>
+</div>
+
+<!-- Tabs -->
+<div class="wf-tabs" style="margin-bottom:0;border-radius:8px 8px 0 0">
+  <a href="#" class="wf-tab active" data-tab="form">Formulario</a>
+  <a href="#" class="wf-tab" data-tab="history">Historico</a>
+  <a href="#" class="wf-tab" data-tab="comments">Comentarios</a>
+</div>
+
+<!-- Formulario tab -->
+<div class="wf-panel" id="tab-form" style="border-radius:0 0 8px 8px;margin-top:0">
+  <form id="taskCompleteForm" data-task-id="<%= payload.task.id %>">
+    <div id="dynamicFormRoot" style="display:grid;gap:14px;margin-bottom:16px"></div>
+
+    <div style="margin-bottom:16px">
+      <label style="display:block;font-size:.85rem;font-weight:500;margin-bottom:4px;color:#202124">Observacao</label>
+      <textarea name="observacao" rows="3" placeholder="Comentario da aprovacao/rejeicao"
+        style="width:100%;padding:8px 12px;border:1px solid #dadce0;border-radius:6px;font-size:.9rem;resize:vertical"></textarea>
     </div>
 
-    <h3 class="font-semibold mb-2">Formulario dinamico</h3>
-    <form id="taskCompleteForm" data-task-id="<%= payload.task.id %>" class="grid gap-3">
-      <div id="dynamicFormRoot" class="grid gap-3"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;padding-top:12px;border-top:1px solid #e0e0e0">
+      <button type="button" id="saveDraftBtn" class="wf-btn-secondary">
+        <i class="bi bi-save"></i> Salvar rascunho
+      </button>
+      <button type="button" data-action="concluir" class="complete-btn wf-btn-danger">
+        <i class="bi bi-x-circle"></i> Concluir tarefa
+      </button>
+      <button type="button" data-action="aprovar" class="complete-btn wf-btn-primary">
+        <i class="bi bi-send"></i> Enviar para proxima etapa
+      </button>
+    </div>
+  </form>
+</div>
 
-      <div>
-        <label class="block text-sm font-semibold mb-1">Observacao</label>
-        <textarea name="observacao" rows="3" class="w-full px-3 py-2 rounded-xl border border-slate-300" placeholder="Comentario da aprovacao/rejeicao"></textarea>
+<!-- Comentarios tab -->
+<div class="wf-panel" id="tab-comments" style="border-radius:0 0 8px 8px;margin-top:0;display:none">
+  <div id="taskCommentsPanel" class="wf-comments-wrap" data-task-id="<%= payload.task.id %>" data-instance-id="<%= payload.task.instancia_processo_id %>">
+    <div id="taskCommentsList" class="wf-comments-wrap">
+      <% if (!comments || !comments.length) { %>
+        <div class="wf-comment-item" id="taskCommentsEmptyState">
+          <div class="wf-comment-meta">Sem comentarios ainda</div>
+          <div class="wf-comment-text">Se precisar alinhar aprovacao, mencione alguem com @usuario.</div>
+        </div>
+      <% } %>
+      <% (comments || []).forEach(function(item){ %>
+        <div class="wf-comment-item">
+          <div class="wf-comment-meta"><strong><%= item.autor %></strong> &middot; <%= __fmtDateTime(item.created_at) %></div>
+          <div class="wf-comment-text"><%= item.mensagem %></div>
+        </div>
+      <% }) %>
+    </div>
+
+    <form id="taskCommentForm" class="wf-comment-form">
+      <div class="wf-comment-mention-wrap">
+        <textarea id="taskCommentInput" placeholder="Escreva um comentario (use @usuario para mencionar)"></textarea>
+        <div id="taskCommentMentionSuggestions" class="wf-comment-mention-suggestions" style="display:none"></div>
       </div>
-
-      <div class="flex gap-2 justify-end flex-wrap">
-        <button type="button" id="saveDraftBtn" class="px-4 py-2 rounded-xl border border-slate-300">Salvar rascunho</button>
-        <button type="button" data-action="concluir" class="complete-btn px-4 py-2 rounded-xl border border-rose-300 text-rose-700">Concluir tarefa</button>
-        <button type="button" data-action="aprovar" class="complete-btn px-4 py-2 rounded-xl bg-ciniBlue text-white">Enviar para proxima etapa</button>
+      <div style="display:flex;justify-content:flex-end;gap:8px">
+        <button type="submit" class="wf-btn-primary" style="font-size:.85rem"><i class="bi bi-chat-dots"></i> Comentar</button>
       </div>
     </form>
   </div>
+</div>
 
-  <div class="wf-panel">
-    <h3 class="font-semibold mb-3">Historico</h3>
-    <div class="space-y-3 max-h-[420px] overflow-auto">
+<!-- Historico tab -->
+<div class="wf-panel" id="tab-history" style="border-radius:0 0 8px 8px;margin-top:0;display:none">
+  <% if (!payload.history.length) { %>
+    <div style="text-align:center;padding:32px;color:#5f6368">
+      <i class="bi bi-clock-history" style="font-size:2rem;color:#dadce0"></i>
+      <p style="margin:8px 0 0">Nenhum evento registrado.</p>
+    </div>
+  <% } else { %>
+    <div class="wf-timeline">
       <% payload.history.forEach(function(item){ %>
-        <article class="p-3 rounded-xl border border-slate-200 bg-slate-50 text-sm">
-          <p class="font-semibold"><%= item.tipo_evento %></p>
-          <p class="text-xs text-slate-600"><%= item.descricao || '-' %></p>
-          <p class="text-xs text-slate-500 mt-1"><%= __fmtDateTime(item.created_at) %> - <%= item.executor || 'sistema' %></p>
-        </article>
+        <div class="wf-timeline-item">
+          <%
+            let dotColor = '#5f6368';
+            let dotIcon  = 'bi-circle-fill';
+            if (item.tipo_evento === 'TASK_COMPLETED') { dotColor = '#1e8e3e'; dotIcon = 'bi-check-circle-fill'; }
+            else if (item.tipo_evento === 'TASK_CREATED') { dotColor = '#1a73e8'; dotIcon = 'bi-plus-circle-fill'; }
+            else if (item.tipo_evento === 'STARTED') { dotColor = '#e8a817'; dotIcon = 'bi-play-circle-fill'; }
+            else if (item.tipo_evento === 'FINISHED') { dotColor = '#1e8e3e'; dotIcon = 'bi-flag-fill'; }
+          %>
+          <div class="wf-timeline-dot" style="color:<%= dotColor %>"><i class="bi <%= dotIcon %>"></i></div>
+          <div class="wf-timeline-content">
+            <strong><%= item.tipo_evento %></strong>
+            <p><%= item.descricao || '-' %></p>
+            <span style="font-size:.78rem;color:#80868b"><%= __fmtDateTime(item.created_at) %> &bull; <%= item.executor || 'sistema' %></span>
+          </div>
+        </div>
       <% }) %>
     </div>
-  </div>
+  <% } %>
 </div>
+
+<script>
+document.querySelectorAll('.wf-tab[data-tab]').forEach(function(tab) {
+  tab.addEventListener('click', function(e) {
+    e.preventDefault();
+    document.querySelectorAll('.wf-tab[data-tab]').forEach(t => t.classList.remove('active'));
+    this.classList.add('active');
+    var target = this.getAttribute('data-tab');
+    document.getElementById('tab-form').style.display = target === 'form' ? '' : 'none';
+    document.getElementById('tab-history').style.display = target === 'history' ? '' : 'none';
+    document.getElementById('tab-comments').style.display = target === 'comments' ? '' : 'none';
+  });
+});
+</script>
 
 <script id="taskDetailSeed" type="application/json"><%- JSON.stringify({
   task: payload.task,
   form: payload.form,
-  responses: payload.responses
+  responses: payload.responses,
+  comments: comments || []
 }) %></script>
 
 <%- include('../partials/shellEnd', { pageScript: '/workflow-assets/js/task-detail.js' }) %>

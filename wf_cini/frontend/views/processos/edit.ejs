@@ -3,40 +3,98 @@
   pageDescription,
   user,
   currentPath,
-  breadcrumbs: [{ label: 'Processos', href: '/processos' }, { label: details.process.codigo, href: '/processos/' + details.process.id }, { label: 'Editar' }]
+  breadcrumbs: [{ label: 'Processos', href: '/processos' }, { label: '#' + details.process.id, href: '/processos/' + details.process.id }, { label: 'Editar' }]
 }) %>
 
-<div class="wf-panel max-w-3xl">
-  <form id="processEditForm" data-process-id="<%= details.process.id %>" class="grid gap-4">
-    <div class="grid md:grid-cols-2 gap-3">
-      <div>
-        <label class="block text-sm font-semibold mb-1">Nome do processo</label>
-        <input required name="nome" value="<%= details.process.nome %>" class="w-full px-3 py-2 rounded-xl border border-slate-300" />
-      </div>
-      <div>
-        <label class="block text-sm font-semibold mb-1">Codigo</label>
-        <input readonly value="<%= details.process.codigo %>" class="w-full px-3 py-2 rounded-xl border border-slate-300 bg-slate-50" />
-      </div>
+<!-- Page header -->
+<div style="display:flex;align-items:center;gap:12px;margin-bottom:20px">
+  <a href="/processos/<%= details.process.id %>" class="wf-btn-secondary" style="padding:6px 10px" title="Voltar"><i class="bi bi-arrow-left"></i></a>
+  <div>
+    <h2 style="margin:0;font-size:1.15rem;font-weight:600;color:#202124">Editar processo</h2>
+    <p style="margin:2px 0 0;font-size:.85rem;color:#5f6368"><%= details.process.nome %> (ID: <%= details.process.id %>)</p>
+  </div>
+</div>
+
+<div class="wf-panel" style="width:100%">
+  <%
+    const acl = Array.isArray(details.acl) ? details.acl : [];
+    const pickUsers = function(predicate){
+      return acl.filter(predicate).map(function(item){ return item.usuario; }).join(', ');
+    };
+    const viewersSeed = pickUsers(function(item){ return item.can_view && !item.can_edit && !item.can_model && !item.can_execute && !item.can_admin; });
+    const editorsSeed = pickUsers(function(item){ return item.can_edit && !item.can_admin; });
+    const modelersSeed = pickUsers(function(item){ return item.can_model && !item.can_admin && !item.can_edit; });
+    const executorsSeed = pickUsers(function(item){ return item.can_execute && !item.can_admin && !item.can_edit; });
+    const adminsSeed = pickUsers(function(item){ return item.can_admin; });
+  %>
+
+  <form id="processEditForm" data-process-id="<%= details.process.id %>" style="display:grid;gap:16px">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div><label class="wf-form-label">Nome do processo</label><input required name="nome" value="<%= details.process.nome %>" class="wf-form-input" /></div>
+      <div><label class="wf-form-label">ID do processo</label><input readonly value="<%= details.process.id %>" class="wf-form-input" style="background:#f5f5f5" /></div>
     </div>
 
-    <div>
-      <label class="block text-sm font-semibold mb-1">Descricao</label>
-      <textarea name="descricao" rows="4" class="w-full px-3 py-2 rounded-xl border border-slate-300"><%= details.process.descricao || '' %></textarea>
-    </div>
+    <div><label class="wf-form-label">Descricao</label><textarea name="descricao" rows="4" class="wf-form-input" style="resize:vertical"><%= details.process.descricao || '' %></textarea></div>
 
-    <div class="max-w-xs">
-      <label class="block text-sm font-semibold mb-1">Status</label>
-      <select name="status" class="w-full px-3 py-2 rounded-xl border border-slate-300">
+    <div style="max-width:200px">
+      <label class="wf-form-label">Status</label>
+      <select name="status" class="wf-form-input">
         <option value="ATIVO" <%= details.process.status === 'ATIVO' ? 'selected' : '' %>>ATIVO</option>
         <option value="INATIVO" <%= details.process.status === 'INATIVO' ? 'selected' : '' %>>INATIVO</option>
       </select>
     </div>
 
-    <div class="flex gap-2 justify-end">
-      <a href="/processos/<%= details.process.id %>" class="px-4 py-2 rounded-xl border border-slate-300">Cancelar</a>
-      <button class="px-4 py-2 rounded-xl bg-ciniBlue text-white">Salvar alteracoes</button>
+    <fieldset style="border:1px solid #e0e0e0;border-radius:8px;padding:16px">
+      <legend style="font-size:.9rem;font-weight:600;color:#202124;padding:0 6px">Permissoes por usuario</legend>
+      <p style="font-size:.8rem;color:#5f6368;margin:0 0 12px">Digite o nome e selecione na lista para incluir usuario na permissao.</p>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div>
+          <label class="wf-form-label">Apenas visualizar</label>
+          <div class="wf-perm-picker">
+            <textarea name="viewers" class="wf-perm-storage" style="display:none"><%= viewersSeed %></textarea>
+            <div class="wf-perm-box" data-role="tags"></div>
+            <input type="text" class="wf-form-input wf-perm-input" data-role="input" placeholder="Digite nome" autocomplete="off" />
+            <div class="wf-perm-suggestions hidden" data-role="suggestions"></div>
+          </div>
+        </div>
+        <div>
+          <label class="wf-form-label">Editar processo</label>
+          <div class="wf-perm-picker">
+            <textarea name="editors" class="wf-perm-storage" style="display:none"><%= editorsSeed %></textarea>
+            <div class="wf-perm-box" data-role="tags"></div>
+            <input type="text" class="wf-form-input wf-perm-input" data-role="input" placeholder="Digite nome" autocomplete="off" />
+            <div class="wf-perm-suggestions hidden" data-role="suggestions"></div>
+          </div>
+        </div>
+        <div>
+          <label class="wf-form-label">Modelar fluxo</label>
+          <div class="wf-perm-picker">
+            <textarea name="modelers" class="wf-perm-storage" style="display:none"><%= modelersSeed %></textarea>
+            <div class="wf-perm-box" data-role="tags"></div>
+            <input type="text" class="wf-form-input wf-perm-input" data-role="input" placeholder="Digite nome" autocomplete="off" />
+            <div class="wf-perm-suggestions hidden" data-role="suggestions"></div>
+          </div>
+        </div>
+        <div>
+          <label class="wf-form-label">Executar e iniciar</label>
+          <div class="wf-perm-picker">
+            <textarea name="executors" class="wf-perm-storage" style="display:none"><%= executorsSeed %></textarea>
+            <div class="wf-perm-box" data-role="tags"></div>
+            <input type="text" class="wf-form-input wf-perm-input" data-role="input" placeholder="Digite nome" autocomplete="off" />
+            <div class="wf-perm-suggestions hidden" data-role="suggestions"></div>
+          </div>
+        </div>
+      </div>
+      <textarea name="admins" style="display:none"><%= adminsSeed %></textarea>
+    </fieldset>
+
+    <div style="display:flex;gap:8px;justify-content:flex-end;padding-top:12px;border-top:1px solid #e0e0e0">
+      <a href="/processos/<%= details.process.id %>" class="wf-btn-secondary">Cancelar</a>
+      <button type="submit" class="wf-btn-primary"><i class="bi bi-check-lg"></i> Salvar alteracoes</button>
     </div>
   </form>
 </div>
+
+<script src="/workflow-assets/js/process-permissions-picker.js"></script>
 
 <%- include('../partials/shellEnd', { pageScript: '/workflow-assets/js/process-edit.js' }) %>
