@@ -5,14 +5,14 @@ function isMissingTableError(error) {
 }
 
 function normalizeUser(value) {
-  return String(value || '').trim().toUpperCase();
+  return String(value || '').trim().toLowerCase();
 }
 
 function normalizeRows(rows) {
   return (rows || []).map((row) => ({
     id: row.id,
     processo_id: row.processo_id,
-    usuario: String(row.usuario || '').trim(),
+    usuario: String(row.usuario || '').trim().toLowerCase(),
     can_view: Boolean(row.can_view),
     can_edit: Boolean(row.can_edit),
     can_model: Boolean(row.can_model),
@@ -94,7 +94,7 @@ async function getPermissionForUser(processoId, user) {
               criado_por, dt_criacao
        FROM processo_permissoes
        WHERE processo_id = :processoId
-         AND UPPER(LTRIM(RTRIM(ISNULL(usuario, '')))) = :usuario`,
+         AND LOWER(LTRIM(RTRIM(ISNULL(usuario, '')))) = :usuario`,
       {
         processoId,
         usuario: normalizedUser,
@@ -117,7 +117,7 @@ async function listVisibleProcessIds(user) {
     const rows = await db.query(
       `SELECT DISTINCT processo_id
        FROM processo_permissoes
-       WHERE UPPER(LTRIM(RTRIM(ISNULL(usuario, '')))) = :usuario
+       WHERE LOWER(LTRIM(RTRIM(ISNULL(usuario, '')))) = :usuario
          AND pode_visualizar = 1`,
       { usuario: normalizedUser }
     );

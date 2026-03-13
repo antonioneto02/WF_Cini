@@ -28,7 +28,7 @@
     if (s === 'EM_ANDAMENTO') return 'wf-badge-blue';
     return 'wf-badge-yellow';
   };
-  const statusLabel = (s) => s === 'CONCLUIDA' ? 'Concluida' : s === 'EM_ANDAMENTO' ? 'Em andamento' : 'Pendente';
+  const statusLabel = (s) => s === 'CONCLUIDA' ? 'Concluída' : s === 'EM_ANDAMENTO' ? 'Em andamento' : 'Pendente';
 %>
 
 <!-- Task header -->
@@ -50,15 +50,19 @@
 <!-- Metadata -->
 <div class="wf-solic-meta" style="margin-bottom:20px">
   <div class="wf-solic-meta-item">
+    <span class="wf-solic-meta-label">Identificador</span>
+    <span class="wf-solic-meta-value"><%= payload.task.identificador || '-' %></span>
+  </div>
+  <div class="wf-solic-meta-item">
     <span class="wf-solic-meta-label">Solicitante</span>
     <span class="wf-solic-meta-value"><%= payload.task.solicitante || '-' %></span>
   </div>
   <div class="wf-solic-meta-item">
-    <span class="wf-solic-meta-label">Responsavel</span>
+    <span class="wf-solic-meta-label">Responsável</span>
     <span class="wf-solic-meta-value"><%= payload.task.responsavel || '-' %></span>
   </div>
   <div class="wf-solic-meta-item">
-    <span class="wf-solic-meta-label">Data inicio</span>
+    <span class="wf-solic-meta-label">Data início</span>
     <span class="wf-solic-meta-value"><%= __fmtDateTime(payload.task.started_at || payload.task.created_at) %></span>
   </div>
   <div class="wf-solic-meta-item">
@@ -68,10 +72,10 @@
 </div>
 
 <!-- Tabs -->
-<div class="wf-tabs" style="margin-bottom:0;border-radius:8px 8px 0 0">
-  <a href="#" class="wf-tab active" data-tab="form">Formulario</a>
-  <a href="#" class="wf-tab" data-tab="history">Historico</a>
-  <a href="#" class="wf-tab" data-tab="comments">Comentarios</a>
+  <div class="wf-tabs" style="margin-bottom:0;border-radius:8px 8px 0 0">
+  <a href="#" class="wf-tab active" data-tab="form">Formulário</a>
+  <a href="#" class="wf-tab" data-tab="history">Histórico</a>
+  <a href="#" class="wf-tab" data-tab="comments">Comentários</a>
 </div>
 
 <!-- Formulario tab -->
@@ -80,8 +84,8 @@
     <div id="dynamicFormRoot" style="display:grid;gap:14px;margin-bottom:16px"></div>
 
     <div style="margin-bottom:16px">
-      <label style="display:block;font-size:.85rem;font-weight:500;margin-bottom:4px;color:#202124">Observacao</label>
-      <textarea name="observacao" rows="3" placeholder="Comentario da aprovacao/rejeicao"
+      <label style="display:block;font-size:.85rem;font-weight:500;margin-bottom:4px;color:#202124">Observação</label>
+      <textarea name="observacao" rows="3" placeholder="Comentário da aprovação/rejeição"
         style="width:100%;padding:8px 12px;border:1px solid #dadce0;border-radius:6px;font-size:.9rem;resize:vertical"></textarea>
     </div>
 
@@ -93,7 +97,7 @@
         <i class="bi bi-x-circle"></i> Concluir tarefa
       </button>
       <button type="button" data-action="aprovar" class="complete-btn wf-btn-primary">
-        <i class="bi bi-send"></i> Enviar para proxima etapa
+        <i class="bi bi-send"></i> Enviar para próxima etapa
       </button>
     </div>
   </form>
@@ -105,8 +109,8 @@
     <div id="taskCommentsList" class="wf-comments-wrap">
       <% if (!comments || !comments.length) { %>
         <div class="wf-comment-item" id="taskCommentsEmptyState">
-          <div class="wf-comment-meta">Sem comentarios ainda</div>
-          <div class="wf-comment-text">Se precisar alinhar aprovacao, mencione alguem com @usuario.</div>
+          <div class="wf-comment-meta">Sem comentários ainda</div>
+          <div class="wf-comment-text">Se precisar alinhar aprovação, mencione alguém com @usuario.</div>
         </div>
       <% } %>
       <% (comments || []).forEach(function(item){ %>
@@ -117,9 +121,9 @@
       <% }) %>
     </div>
 
-    <form id="taskCommentForm" class="wf-comment-form">
+      <form id="taskCommentForm" class="wf-comment-form">
       <div class="wf-comment-mention-wrap">
-        <textarea id="taskCommentInput" placeholder="Escreva um comentario (use @usuario para mencionar)"></textarea>
+        <textarea id="taskCommentInput" placeholder="Escreva um comentário (use @usuario para mencionar)"></textarea>
         <div id="taskCommentMentionSuggestions" class="wf-comment-mention-suggestions" style="display:none"></div>
       </div>
       <div style="display:flex;justify-content:flex-end;gap:8px">

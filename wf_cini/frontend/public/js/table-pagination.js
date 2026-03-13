@@ -63,86 +63,138 @@
     return { wrapper, select };
   }
 
+  // Keep state per table so we can refresh when rows are hidden/shown by filters
+  const tableStates = new WeakMap();
+
   function initTablePagination(table) {
-    if (!table || table.dataset.paginationReady === '1') return;
+    if (!table) return;
 
     const tbody = table.tBodies && table.tBodies[0] ? table.tBodies[0] : null;
     if (!tbody) return;
 
-    let pageSize = normalizePageSize(table.dataset.pageSize, DEFAULT_PAGE_SIZE);
-    const allRows = Array.from(tbody.querySelectorAll('tr'));
-    const placeholderRows = allRows.filter(isPlaceholderRow);
-    const dataRows = allRows.filter((row) => !isPlaceholderRow(row));
-
-    let currentPage = 1;
-
-    const host = document.createElement('div');
-    host.className = 'wf-table-pagination';
-
-    const info = document.createElement('div');
-    info.className = 'wf-table-pagination-info';
-
-    const controls = document.createElement('div');
-    controls.className = 'wf-table-pagination-controls';
-
-    const { wrapper: pageSizeWrapper, select: pageSizeSelect } = buildPageSizeSelector(pageSize);
-
-    const prevBtn = buildButton('Anterior', 'prev');
-    const nextBtn = buildButton('Proxima', 'next');
-
-    controls.appendChild(pageSizeWrapper);
-    controls.appendChild(prevBtn);
-    controls.appendChild(nextBtn);
-
-    host.appendChild(info);
-    host.appendChild(controls);
-
-    table.insertAdjacentElement('afterend', host);
-
-    function render() {
-      const totalItems = dataRows.length;
-      const effectivePageSize = pageSize === PAGE_SIZE_ALL
-        ? Math.max(1, totalItems)
-        : pageSize;
-      const totalPages = Math.max(1, Math.ceil(totalItems / effectivePageSize));
-
-      if (currentPage > totalPages) currentPage = totalPages;
-      if (currentPage < 1) currentPage = 1;
-
-      if (!totalItems) {
-        placeholderRows.forEach((row) => setVisible(row, true));
-      } else {
-        const start = (currentPage - 1) * effectivePageSize;
-        const end = start + effectivePageSize;
-        dataRows.forEach((row, index) => setVisible(row, index >= start && index < end));
-        placeholderRows.forEach((row) => setVisible(row, false));
-      }
-
-      const startItem = totalItems ? ((currentPage - 1) * effectivePageSize) + 1 : 0;
-      const endItem = totalItems ? Math.min(currentPage * effectivePageSize, totalItems) : 0;
-      info.textContent = `Pagina ${currentPage} de ${totalPages} • ${startItem}-${endItem} de ${totalItems}`;
-
-      prevBtn.disabled = currentPage <= 1;
-      nextBtn.disabled = currentPage >= totalPages;
+    // compute current rows dynamically (only visible data rows are considered)
+    function collectRows() {
+      const allRows = Array.from(tbody.querySelectorAll('tr'));
+      const placeholderRows = allRows.filter(isPlaceholderRow);
+      const dataRows = allRows.filter((row) => !isPlaceholderRow(row) && getComputedStyle(row).display !== 'none');
+      return { allRows, placeholderRows, dataRows };
     }
 
-    prevBtn.addEventListener('click', () => {
-      currentPage -= 1;
-      render();
-    });
+    let state = tableStates.get(table);
+    if (!state) {
+      // initial setup
+      const { placeholderRows, dataRows } = collectRows();
 
-    nextBtn.addEventListener('click', () => {
-      currentPage += 1;
-      render();
-    });
+      state = {
+        table,
+        tbody,
+        pageSize: normalizePageSize(table.dataset.pageSize, DEFAULT_PAGE_SIZE),
+        currentPage: 1,
+        placeholderRows,
+        dataRows,
+        host: null,
+        info: null,
+        pageSizeSelect: null,
+        prevBtn: null,
+        nextBtn: null,
+      };
 
-    pageSizeSelect.addEventListener('change', () => {
-      pageSize = normalizePageSize(pageSizeSelect.value, DEFAULT_PAGE_SIZE);
-      currentPage = 1;
-      render();
-    });
+      const host = document.createElement('div');
+      host.className = 'wf-table-pagination';
 
-    render();
+      const info = document.createElement('div');
+      info.className = 'wf-table-pagination-info';
+
+      const controls = document.createElement('div');
+      controls.className = 'wf-table-pagination-controls';
+
+      const { wrapper: pageSizeWrapper, select: pageSizeSelect } = buildPageSizeSelector(state.pageSize);
+
+      const prevBtn = buildButton('Anterior', 'prev');
+      const nextBtn = buildButton('Proxima', 'next');
+
+      controls.appendChild(pageSizeWrapper);
+      controls.appendChild(prevBtn);
+      controls.appendChild(nextBtn);
+
+      host.appendChild(info);
+      host.appendChild(controls);
+
+      table.insertAdjacentElement('afterend', host);
+
+      state.host = host;
+      state.info = info;
+      state.pageSizeSelect = pageSizeSelect;
+      state.prevBtn = prevBtn;
+      state.nextBtn = nextBtn;
+
+      prevBtn.addEventListener('click', () => {
+        state.currentPage -= 1;
+        renderState(state);
+      });
+
+      nextBtn.addEventListener('click', () => {
+        state.currentPage += 1;
+        renderState(state);
+      });
+
+      pageSizeSelect.addEventListener('change', () => {
+        state.pageSize = normalizePageSize(pageSizeSelect.value, DEFAULT_PAGE_SIZE);
+        state.currentPage = 1;
+        renderState(state);
+      });
+
+      tableStates.set(table, state);
+    } else {
+      // refresh existing state (e.g., on filter change)
+      const rows = collectRows();
+      state.placeholderRows = rows.placeholderRows;
+      state.dataRows = rows.dataRows;
+      // keep current page but clamp later
+    }
+
+    // render uses state to show/hide rows
+    function renderState(s) {
+      const totalItems = s.dataRows.length;
+      const effectivePageSize = s.pageSize === PAGE_SIZE_ALL ? Math.max(1, totalItems) : s.pageSize;
+      const totalPages = Math.max(1, Math.ceil(totalItems / effectivePageSize));
+
+      if (s.currentPage > totalPages) s.currentPage = totalPages;
+      if (s.currentPage < 1) s.currentPage = 1;
+
+      if (!totalItems) {
+        s.placeholderRows.forEach((row) => setVisible(row, true));
+      } else {
+        const start = (s.currentPage - 1) * effectivePageSize;
+        const end = start + effectivePageSize;
+        // hide all data rows first
+        const allData = Array.from(s.tbody.querySelectorAll('tr')).filter((r) => !isPlaceholderRow(r));
+        allData.forEach((row) => setVisible(row, false));
+        // show only the ones in current page that are visible
+        s.dataRows.forEach((row, index) => setVisible(row, index >= start && index < end));
+        s.placeholderRows.forEach((row) => setVisible(row, false));
+      }
+
+      const startItem = totalItems ? ((s.currentPage - 1) * effectivePageSize) + 1 : 0;
+      const endItem = totalItems ? Math.min(s.currentPage * effectivePageSize, totalItems) : 0;
+      s.info.textContent = `Pagina ${s.currentPage} de ${totalPages} • ${startItem}-${endItem} de ${totalItems}`;
+
+      s.prevBtn.disabled = s.currentPage <= 1;
+      s.nextBtn.disabled = s.currentPage >= totalPages;
+    }
+
+    // ensure state has up-to-date arrays
+    const currentState = tableStates.get(table);
+    const rows = (function () {
+      const allRows = Array.from(tbody.querySelectorAll('tr'));
+      return {
+        placeholderRows: allRows.filter(isPlaceholderRow),
+        dataRows: allRows.filter((row) => !isPlaceholderRow(row) && getComputedStyle(row).display !== 'none'),
+      };
+    })();
+    currentState.placeholderRows = rows.placeholderRows;
+    currentState.dataRows = rows.dataRows;
+    renderState(currentState);
     table.dataset.paginationReady = '1';
   }
 
@@ -154,7 +206,13 @@
   }
 
   window.WorkflowTablePagination = {
-    refresh: initAllTables,
+    refresh: function (table) {
+      if (table) {
+        initTablePagination(table);
+        return;
+      }
+      document.querySelectorAll('table.wf-table').forEach((tbl) => initTablePagination(tbl));
+    },
   };
 
   if (document.readyState === 'loading') {

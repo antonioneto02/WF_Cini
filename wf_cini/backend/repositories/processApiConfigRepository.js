@@ -82,18 +82,18 @@ async function upsertByProcessId(processoId, payload, actor) {
 
 async function listAllConfigs() {
   try {
-    return db.query(
-      `SELECT c.id, c.processo_id,
-              c.chave_api_publica AS public_api_key,
-              c.permite_protheus AS allow_protheus,
-              c.permite_mysql AS allow_mysql,
-              c.permite_externo AS allow_external,
-              c.ativo,
-              p.nome AS processo_nome, p.codigo AS processo_codigo,
-              c.dt_criacao, c.dt_atualizacao
-       FROM processo_api_config c
-       JOIN processos p ON p.id = c.processo_id
-       ORDER BY c.dt_atualizacao DESC`
+          return db.query(
+          `SELECT c.id, c.processo_id,
+            c.chave_api_publica AS public_api_key,
+            c.permite_protheus AS allow_protheus,
+            c.permite_mysql AS allow_mysql,
+            c.permite_externo AS allow_external,
+            c.ativo,
+            p.nome AS processo_nome, p.id AS processo_codigo,
+            c.dt_criacao, c.dt_atualizacao
+           FROM processo_api_config c
+           JOIN processos p ON p.id = c.processo_id
+           ORDER BY c.dt_atualizacao DESC`
     );
   } catch (error) {
     if (isMissingTableError(error)) return [];

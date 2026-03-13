@@ -32,6 +32,7 @@
   const concluidas = Number(summary.concluidas || 0);
   const emAndamento = Number(summary.em_andamento || 0);
   const comErro = Number(summary.com_erro || 0);
+  const atrasadas = Number(summary.atrasadas || summary.atrasado || 0);
   const taxaSucesso = Number(summary.taxa_sucesso || 0);
 
   function badgeClass(status) {
@@ -72,8 +73,8 @@
     <p class="wf-indicator-value" style="color:#e37400"><%= emAndamento %></p>
   </div>
   <div class="wf-indicator-card">
-    <p class="wf-indicator-label">Com erro</p>
-    <p class="wf-indicator-value" style="color:#d93025"><%= comErro %></p>
+    <p class="wf-indicator-label">Atrasadas</p>
+    <p class="wf-indicator-value" style="color:#d93025"><%= (atrasadas || comErro) %></p>
   </div>
   <div class="wf-indicator-card">
     <p class="wf-indicator-label">Taxa de sucesso</p>
@@ -93,8 +94,24 @@
         <option value="FALHA" <%= filters.status === 'FALHA' ? 'selected' : '' %>>Falha</option>
       </select>
     </div>
-    <button class="wf-btn-primary" type="submit"><i class="bi bi-funnel"></i> Filtrar</button>
-    <% if (filters.status) { %>
+    <div style="min-width:180px">
+      <label>Identificador</label>
+      <input name="identificador" value="<%= filters.identificador || '' %>" placeholder="Identificador" />
+    </div>
+    <div style="min-width:180px">
+      <label>Solicitante</label>
+      <input name="solicitante" value="<%= filters.solicitante || '' %>" placeholder="Solicitante" />
+    </div>
+    <div style="min-width:160px">
+      <label>Data início</label>
+      <input type="date" name="startDate" value="<%= filters.startDate || '' %>" />
+    </div>
+    <div style="min-width:160px">
+      <label>Data fim</label>
+      <input type="date" name="endDate" value="<%= filters.endDate || '' %>" />
+    </div>
+    
+    <% if (filters.status || filters.identificador || filters.solicitante || filters.startDate || filters.endDate) { %>
       <a href="/processos/<%= payload.process.id %>/instancias" class="wf-btn-secondary">Limpar</a>
     <% } %>
   </form>
@@ -106,6 +123,7 @@
       <tr>
         <th style="width:92px">Instancia</th>
         <th style="width:140px">Status</th>
+        <th style="width:170px">Identificador</th>
         <th style="width:180px">Solicitante</th>
         <th style="width:150px">Inicio</th>
         <th style="width:150px">Fim</th>
@@ -116,7 +134,7 @@
     <tbody>
       <% if (!payload.result.data.length) { %>
         <tr>
-          <td colspan="7" style="text-align:center;padding:32px;color:#5f6368">
+          <td colspan="8" style="text-align:center;padding:32px;color:#5f6368">
             <i class="bi bi-inbox" style="font-size:2rem;color:#dadce0;display:block;margin-bottom:8px"></i>
             Nenhuma instancia encontrada para este filtro.
           </td>
@@ -132,6 +150,7 @@
           <td>
             <span class="<%= badgeClass(item.status) %>"><%= item.status %></span>
           </td>
+          <td><%= item.identificador || '-' %></td>
           <td><%= item.solicitante || '-' %></td>
           <td><%= __fmtDateTime(item.started_at) %></td>
           <td><%= __fmtDateTime(item.ended_at) %></td>

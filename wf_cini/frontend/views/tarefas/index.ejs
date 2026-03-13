@@ -42,26 +42,42 @@
 </div>
 
 <!-- Fluig-style tabs -->
-<div class="wf-tabs">
+  <div class="wf-tabs">
   <a href="/tarefas" class="wf-tab <%= !currentStatus ? 'active' : '' %>">Todas</a>
-  <a href="/tarefas?status=MINHAS_TAREFAS&processoId=<%= filters.processoId %>&search=<%= filters.search %>" class="wf-tab <%= currentStatus === 'MINHAS_TAREFAS' ? 'active' : '' %>">A concluir</a>
-  <a href="/tarefas?status=EM_ANDAMENTO&processoId=<%= filters.processoId %>&search=<%= filters.search %>" class="wf-tab <%= currentStatus === 'EM_ANDAMENTO' ? 'active' : '' %>">Em andamento</a>
-  <a href="/tarefas?status=CONCLUIDA&processoId=<%= filters.processoId %>&search=<%= filters.search %>" class="wf-tab <%= currentStatus === 'CONCLUIDA' ? 'active' : '' %>">Concluidas</a>
+  <a href="/tarefas?status=MINHAS_TAREFAS&processName=<%= encodeURIComponent(filters.processName || '') %>&search=<%= encodeURIComponent(filters.search || '') %>" class="wf-tab <%= currentStatus === 'MINHAS_TAREFAS' ? 'active' : '' %>">A concluir</a>
+  <a href="/tarefas?status=EM_ANDAMENTO&processName=<%= encodeURIComponent(filters.processName || '') %>&search=<%= encodeURIComponent(filters.search || '') %>" class="wf-tab <%= currentStatus === 'EM_ANDAMENTO' ? 'active' : '' %>">Em andamento</a>
+  <a href="/tarefas?status=CONCLUIDA&processName=<%= encodeURIComponent(filters.processName || '') %>&search=<%= encodeURIComponent(filters.search || '') %>" class="wf-tab <%= currentStatus === 'CONCLUIDA' ? 'active' : '' %>">Concluidas</a>
 </div>
 
 <!-- Filters -->
 <div class="wf-filter-bar">
   <form id="taskFilterForm" style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;width:100%">
     <input type="hidden" name="status" value="<%= filters.status %>" />
-    <div style="min-width:120px">
+    <div style="min-width:160px">
       <label>Processo</label>
-      <input name="processoId" value="<%= filters.processoId %>" placeholder="ID do processo" />
+      <input name="processName" value="<%= filters.processName %>" placeholder="Nome do processo" />
+    </div>
+    <div style="min-width:120px">
+      <label>Solicitacao</label>
+      <input name="instanciaId" value="<%= filters.instanciaId %>" placeholder="ID da solicitação" />
+    </div>
+    <div style="min-width:140px">
+      <label>Identificador</label>
+      <input name="identificador" value="<%= filters.identificador %>" placeholder="Identificador" />
     </div>
     <div style="flex:1;min-width:200px">
-      <label>Pesquisar</label>
-      <input name="search" value="<%= filters.search %>" placeholder="Processo, atividade ou solicitante" />
+      <label>Desc</label>
+      <input name="desc" value="<%= filters.search %>" placeholder="Descrição do identificador" />
     </div>
-    <button class="wf-btn-primary" type="submit"><i class="bi bi-search"></i> Filtrar</button>
+    <div style="min-width:160px">
+      <label>Data início</label>
+      <input type="date" name="startDate" value="<%= filters.startDate %>" />
+    </div>
+    <div style="min-width:160px">
+      <label>Data fim</label>
+      <input type="date" name="endDate" value="<%= filters.endDate %>" />
+    </div>
+    
   </form>
 </div>
 
@@ -72,6 +88,8 @@
       <tr>
         <th>Processo</th>
         <th>Solicitacao</th>
+        <th>desc</th>
+        <th>Identificador</th>
         <th>Atividade</th>
         <th>Data</th>
         <th>Prazo (SLA)</th>
@@ -82,18 +100,20 @@
     <tbody>
       <% if (!result.data.length) { %>
         <tr>
-          <td colspan="7" style="text-align:center;padding:40px;color:#5f6368">
+          <td colspan="9" style="text-align:center;padding:40px;color:#5f6368">
             <i class="bi bi-inbox" style="font-size:32px;color:#dadce0;display:block;margin-bottom:8px"></i>
             Nenhuma tarefa encontrada para os filtros informados.
           </td>
         </tr>
       <% } %>
       <% result.data.forEach(function(task){ %>
-        <tr style="cursor:pointer" onclick="window.location='/tarefas/<%= task.id %>'">
+        <tr>
           <td>
             <strong style="display:block"><%= task.processo_nome %></strong>
           </td>
           <td><span class="wf-badge wf-badge-blue">#<%= task.instancia_processo_id %></span></td>
+          <td><%= task.processo_desc_iden || '-' %></td>
+          <td><%= task.identificador || '-' %></td>
           <td><strong><%= task.nome_etapa %></strong></td>
           <td><%= __fmtDateTime(task.created_at) %></td>
           <td>

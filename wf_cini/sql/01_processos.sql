@@ -14,6 +14,8 @@ CREATE TABLE [dbo].[PROCESSOS](
     [codigo] [nvarchar](100) NOT NULL,
     [descricao] [nvarchar](max) NULL,
     [status] [nvarchar](30) NOT NULL,
+    [usa_identificador] [bit] NOT NULL,
+    [tipo_identificador] [nvarchar](20) NULL,
     [criado_por] [nvarchar](120) NULL,
     [atualizado_por] [nvarchar](120) NULL,
     [dt_criacao] [datetime2](7) NOT NULL,
@@ -28,10 +30,16 @@ GO
 ALTER TABLE [dbo].[PROCESSOS] ADD  DEFAULT ('ATIVO') FOR [status]
 GO
 
+ALTER TABLE [dbo].[PROCESSOS] ADD  DEFAULT ((0)) FOR [usa_identificador]
+GO
+
 ALTER TABLE [dbo].[PROCESSOS] ADD  DEFAULT (getdate()) FOR [dt_criacao]
 GO
 
 ALTER TABLE [dbo].[PROCESSOS] ADD CONSTRAINT uq_processos_codigo UNIQUE ([codigo])
+GO
+
+ALTER TABLE [dbo].[PROCESSOS] ADD CONSTRAINT ck_processos_tipo_identificador CHECK ([tipo_identificador] IS NULL OR [tipo_identificador] IN ('TEXTO', 'SEQUENCIAL'))
 GO
 
 CREATE INDEX idx_processos_status ON [dbo].[PROCESSOS] ([status])

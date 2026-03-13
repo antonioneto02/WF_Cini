@@ -11,7 +11,10 @@ async function startByProtheus(req, res, next) {
       sourceKey: req.body.sourceKey || req.body.chave || req.body.documento || req.body.id,
       processoId: req.body.processoId,
       processoCodigo: req.body.processoCodigo,
-      payload: req.body.payload || {},
+      payload: {
+        ...(req.body.payload || {}),
+        ...(req.body.identificador !== undefined ? { identificador: req.body.identificador } : {}),
+      },
       solicitante: req.body.solicitante || current,
     });
 
@@ -29,7 +32,10 @@ async function startByMysql(req, res, next) {
       sourceKey: req.body.sourceKey || req.body.chave || req.body.pk || req.body.id,
       processoId: req.body.processoId,
       processoCodigo: req.body.processoCodigo,
-      payload: req.body.payload || {},
+      payload: {
+        ...(req.body.payload || {}),
+        ...(req.body.identificador !== undefined ? { identificador: req.body.identificador } : {}),
+      },
       solicitante: req.body.solicitante || current,
     });
 
@@ -48,7 +54,10 @@ async function publicStart(req, res, next) {
     const instance = await integrationService.startByPublicApi({
       processoCodigo,
       apiKey,
-      payload: req.body.payload || req.body || {},
+      payload: {
+        ...(req.body.payload || req.body || {}),
+        ...(req.body.identificador !== undefined ? { identificador: req.body.identificador } : {}),
+      },
       solicitante: req.body.solicitante || 'public-api',
       activitySlug,
     });

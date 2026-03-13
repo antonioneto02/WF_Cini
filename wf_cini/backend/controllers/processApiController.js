@@ -27,6 +27,7 @@ async function create(req, res, next) {
       codigo: req.body.codigo,
       descricao: req.body.descricao,
       permissions: req.body.permissions || {},
+      identifierConfig: req.body.identifier || req.body.identifierConfig || null,
       createdBy: currentUser,
     });
 
@@ -55,6 +56,7 @@ async function update(req, res, next) {
       descricao: req.body.descricao,
       status: req.body.status,
       permissions: req.body.permissions || null,
+      identifierConfig: req.body.identifier || req.body.identifierConfig || null,
       updatedBy: currentUser,
     });
 

@@ -59,13 +59,13 @@
           <i class="bi bi-check2-square"></i><span>Central de tarefas</span>
         </a>
         <a href="/solicitacoes" class="wf-nav-item <%= currentPath && currentPath.startsWith('/solicitacoes') ? 'active' : '' %>">
-          <i class="bi bi-file-earmark-text"></i><span>Solicitacoes</span>
+          <i class="bi bi-file-earmark-text"></i><span>Solicitações</span>
         </a>
         <a href="/formularios/construtor" class="wf-nav-item <%= currentPath && currentPath.startsWith('/formularios') ? 'active' : '' %>">
-          <i class="bi bi-ui-checks-grid"></i><span>Formularios</span>
+          <i class="bi bi-ui-checks-grid"></i><span>Formulários</span>
         </a>
         <a href="/automacoes" class="wf-nav-item <%= currentPath && currentPath.startsWith('/automacoes') ? 'active' : '' %>">
-          <i class="bi bi-robot"></i><span>Automacoes</span>
+          <i class="bi bi-robot"></i><span>Automações</span>
         </a>
         <a href="/apis/processos" class="wf-nav-item <%= currentPath && currentPath.startsWith('/apis/processos') ? 'active' : '' %>">
           <i class="bi bi-plug"></i><span>APIs dos Processos</span>
@@ -120,13 +120,13 @@
             </div>
           </div>
           <div class="wf-user-chip" id="wfUserToggle" tabindex="0" role="button" aria-haspopup="true" aria-expanded="false">
-            <i class="bi bi-person-circle"></i>
-            <span><%= (user && user.nome) || 'Usuario' %></span>
-          </div>
+              <i class="bi bi-person-circle"></i>
+              <span><%= (user && user.nome) || 'Usuário' %></span>
+            </div>
           <div class="wf-user-dropdown" id="wfUserDropdown" style="display:none;">
             <div class="wf-user-dropdown-header">
-              <strong><%= (user && user.nome) || 'Usuario' %></strong>
-            </div>
+                <strong><%= (user && user.nome) || 'Usuário' %></strong>
+              </div>
             <div class="wf-user-dropdown-actions">
               <a href="/logout" class="wf-logout-link"><i class="bi bi-box-arrow-right"></i> Sair</a>
             </div>

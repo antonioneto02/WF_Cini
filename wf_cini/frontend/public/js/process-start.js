@@ -2,8 +2,9 @@
   const form = document.getElementById('startProcessForm');
   const formSelect = document.getElementById('startFormSelect');
   const formRoot = document.getElementById('startDynamicFormRoot');
+  const identifierInput = document.getElementById('startIdentifierInput');
   const seedEl = document.getElementById('startProcessSeed');
-  const seed = seedEl ? JSON.parse(seedEl.textContent) : { forms: [] };
+  const seed = seedEl ? JSON.parse(seedEl.textContent) : { forms: [], identifier: { required: false, type: null } };
 
   if (!form || !formSelect || !formRoot) return;
 
@@ -95,6 +96,8 @@
     fields.forEach(function (field) {
       formRoot.appendChild(createField(field));
     });
+
+    // no identifier-field suggestions on start page
   }
 
   function collectDynamicPayload() {
@@ -123,6 +126,30 @@
 
     const processId = Number(form.dataset.processId);
     const payload = collectDynamicPayload();
+
+    if (seed.identifier && seed.identifier.required) {
+      const identifierValue = String((identifierInput && identifierInput.value) || '').trim();
+      if (!identifierValue) {
+        WorkflowUI.showToast('Informe o identificador da solicitacao', 'warning');
+        if (identifierInput) identifierInput.focus();
+        return;
+      }
+
+      if (String(seed.identifier.type || '').toUpperCase() === 'SEQUENCIAL') {
+        const val = identifierValue;
+        // allow digits with common separators (dot, comma, dash, space)
+        const allowedChars = /^[0-9.,\s\-]+$/.test(val);
+        const digitsOnly = /^\d+$/.test(val.replace(/[.,\s\-]/g, ''));
+        if (!allowedChars || !digitsOnly) {
+          WorkflowUI.showToast('O identificador deve conter apenas números (dígitos e separadores . , - são permitidos)', 'warning');
+          if (identifierInput) identifierInput.focus();
+          return;
+        }
+      }
+
+      payload.identificador = identifierValue;
+      // identifier value sent as payload.identificador only
+    }
 
     const rawExtra = (form.extraPayload.value || '').trim();
     if (rawExtra) {
@@ -161,4 +188,17 @@
     formSelect.value = String(seed.forms[0].id);
     renderFormBySelection();
   }
+
+  // sync identifier input -> selected form field value (live)
+  function setFormFieldValue(name, value) {
+    if (!name) return;
+    const el = formRoot.querySelector('[name="' + name + '"]');
+    if (!el) return;
+    try {
+      if (el.type === 'checkbox') el.checked = Boolean(value);
+      else el.value = value;
+    } catch (_) {}
+  }
+
+  // no live-sync logic on start page
 })();

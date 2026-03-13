@@ -6,7 +6,10 @@ const { getCurrentUser } = require('../utils/requestUser');
 async function start(req, res, next) {
   try {
     const processoId = Number(req.body.processoId);
-    const payload = req.body.payload || {};
+    const payload = {
+      ...(req.body.payload || {}),
+      ...(req.body.identificador !== undefined ? { identificador: req.body.identificador } : {}),
+    };
     const user = getCurrentUser(req);
     const canExecute = await accessService.canUser(processoId, user, 'execute');
     if (!canExecute) {

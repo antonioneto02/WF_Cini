@@ -79,6 +79,31 @@
       </div>
     </fieldset>
 
+    <fieldset style="border:1px solid #e0e0e0;border-radius:8px;padding:16px">
+      <legend style="font-size:.9rem;font-weight:600;color:#202124;padding:0 6px">Identificador da solicitacao</legend>
+      <p style="font-size:.8rem;color:#5f6368;margin:0 0 12px">Quando habilitado, toda nova solicitacao exigira um identificador no inicio do processo.</p>
+
+      <div style="display:grid;gap:12px;max-width:420px">
+        <label style="display:flex;align-items:center;gap:6px;font-size:.88rem">
+          <input type="checkbox" name="useIdentifier" id="useIdentifier" />
+          Exigir identificador ao iniciar processo
+        </label>
+
+        <div>
+          <label class="wf-form-label">Tipo do identificador</label>
+          <select name="identifierType" id="identifierType" class="wf-form-input" disabled>
+            <option value="">Selecione</option>
+            <option value="TEXTO">Texto livre</option>
+            <option value="SEQUENCIAL">Campo numérico</option>
+          </select>
+        </div>
+        <div>
+          <label class="wf-form-label">Nome do campo identificador (descritivo)</label>
+          <input id="identifierFieldName" name="identifierFieldName" class="wf-form-input" placeholder="Ex: numero, codigo, nota" />
+        </div>
+      </div>
+    </fieldset>
+
     <div style="display:flex;gap:8px;justify-content:flex-end;padding-top:12px;border-top:1px solid #e0e0e0">
       <a href="/processos" class="wf-btn-secondary">Cancelar</a>
       <button type="submit" class="wf-btn-primary"><i class="bi bi-check-lg"></i> Salvar processo</button>

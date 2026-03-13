@@ -91,6 +91,8 @@ const connectMode = {
   source: null,
 };
 
+let _suppressGatewayModal = false;
+
 const refs = {
   selectedElementId: document.getElementById('selectedElementId'),
   name: document.getElementById('propName'),
@@ -112,6 +114,12 @@ const refs = {
   managerUsersSelected: document.getElementById('propManagerUsersSelected'),
   sla: document.getElementById('propSla'),
   condition: document.getElementById('propCondition'),
+  gatewayDecisionSection: document.getElementById('gatewayDecisionSection'),
+  decisionQuestion: document.getElementById('propDecisionQuestion'),
+  decisionAnswerField: document.getElementById('propDecisionAnswerField'),
+  defaultFlow: document.getElementById('propDefaultFlow'),
+  flowDecisionSection: document.getElementById('flowDecisionSection'),
+  flowDecisionOutcome: document.getElementById('propFlowDecisionOutcome'),
   formId: document.getElementById('propFormId'),
   automationId: document.getElementById('propAutomationId'),
   dbQuery: document.getElementById('propDbQuery'),
@@ -120,6 +128,13 @@ const refs = {
   applyProps: document.getElementById('btnApplyProps'),
   contextMenu: document.getElementById('modelerContextMenu'),
   flowInsertFab: document.getElementById('flowInsertFab'),
+  flowInsertMenu: document.getElementById('flowInsertMenu'),
+  toolboxSearchInput: document.getElementById('toolboxSearchInput'),
+  dirtyBadge: document.getElementById('modelerDirtyBadge'),
+  commandPalette: document.getElementById('modelerCommandPalette'),
+  commandInput: document.getElementById('modelerCommandInput'),
+  commandList: document.getElementById('modelerCommandList'),
+  propsForm: document.getElementById('propsForm'),
 };
 
 const formById = (seed.forms || []).reduce((acc, form) => {
@@ -138,6 +153,16 @@ let responsibleSearchTimer = null;
 let lastManagerUsersResults = [];
 let managerUsersSearchTimer = null;
 let selectedManagerUsers = [];
+
+const draftStorageKey = `wf:modeler:draft:${seed.processoId}`;
+const uiState = {
+  dirty: false,
+  autosaveTimer: null,
+  autosaveInFlight: false,
+  ignoreCommandStack: false,
+  commandItems: [],
+  activeCommandIndex: 0,
+};
 
 function setFieldValue(ref, value) {
   if (!ref) return;
@@ -204,6 +229,271 @@ function formatAutomationPayloadMap(entries) {
     })
     .filter(Boolean)
     .join(', ');
+}
+
+function isEditableDomTarget(target) {
+  if (!target) return false;
+  const tag = String(target.tagName || '').toUpperCase();
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true;
+  return Boolean(target.isContentEditable);
+}
+
+function setDirtyState(isDirty) {
+  uiState.dirty = Boolean(isDirty);
+  if (!refs.dirtyBadge) return;
+
+  refs.dirtyBadge.classList.toggle('is-dirty', uiState.dirty);
+  refs.dirtyBadge.classList.toggle('is-clean', !uiState.dirty);
+  refs.dirtyBadge.textContent = uiState.dirty ? 'Alteracoes pendentes' : 'Sem alteracoes';
+}
+
+function replacePropsStore(newProps) {
+  const normalized = normalizeProperties(newProps || {});
+  propsStore.elements = normalized.elements || {};
+  propsStore.flows = normalized.flows || {};
+  propsStore.meta = normalized.meta || {};
+}
+
+function persistLocalDraft() {
+  if (readOnlyMode || uiState.autosaveInFlight) return;
+  uiState.autosaveInFlight = true;
+
+  modeler.saveXML({ format: true })
+    .then(({ xml }) => {
+      const payload = {
+        savedAt: new Date().toISOString(),
+        xml,
+        properties: propsStore,
+      };
+      window.localStorage.setItem(draftStorageKey, JSON.stringify(payload));
+    })
+    .catch(() => {
+    })
+    .finally(() => {
+      uiState.autosaveInFlight = false;
+    });
+}
+
+function scheduleLocalAutosave() {
+  if (readOnlyMode) return;
+  if (uiState.autosaveTimer) {
+    clearTimeout(uiState.autosaveTimer);
+    uiState.autosaveTimer = null;
+  }
+  uiState.autosaveTimer = setTimeout(() => {
+    persistLocalDraft();
+  }, 1200);
+}
+
+function clearLocalDraft() {
+  if (uiState.autosaveTimer) {
+    clearTimeout(uiState.autosaveTimer);
+    uiState.autosaveTimer = null;
+  }
+  try {
+    window.localStorage.removeItem(draftStorageKey);
+  } catch (_) {
+  }
+}
+
+function markDiagramChanged() {
+  if (readOnlyMode) return;
+  setDirtyState(true);
+  scheduleLocalAutosave();
+}
+
+function tryRestoreLocalDraft() {
+  if (readOnlyMode) return Promise.resolve(false);
+
+  let raw = null;
+  try {
+    raw = window.localStorage.getItem(draftStorageKey);
+  } catch (_) {
+    raw = null;
+  }
+  if (!raw) return Promise.resolve(false);
+
+  let parsed = null;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (_) {
+    clearLocalDraft();
+    return Promise.resolve(false);
+  }
+
+  if (!parsed || !parsed.xml) {
+    clearLocalDraft();
+    return Promise.resolve(false);
+  }
+
+  const savedAtLabel = parsed.savedAt
+    ? new Date(parsed.savedAt).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })
+    : 'instante desconhecido';
+  const shouldRestore = window.confirm(`Foi encontrado um rascunho local salvo em ${savedAtLabel}. Deseja restaurar?`);
+
+  if (!shouldRestore) {
+    clearLocalDraft();
+    return Promise.resolve(false);
+  }
+
+  uiState.ignoreCommandStack = true;
+
+  return modeler.importXML(parsed.xml)
+    .then(() => {
+      replacePropsStore(parsed.properties || {});
+      modeler.get('canvas').zoom('fit-viewport');
+      renderTypeOverlays();
+      syncPanelFromSelection();
+      setDirtyState(true);
+      WorkflowUI.showToast('Rascunho local restaurado', 'success');
+      return true;
+    })
+    .catch(() => false)
+    .finally(() => {
+      uiState.ignoreCommandStack = false;
+    });
+}
+
+function applyToolboxFilter() {
+  if (!refs.toolboxSearchInput) return;
+
+  const query = String(refs.toolboxSearchInput.value || '').trim().toLowerCase();
+  const panel = document.getElementById('wfToolboxPanel');
+  if (!panel) return;
+
+  const groups = Array.from(panel.querySelectorAll('.wf-toolbox-group-title'));
+  groups.forEach((groupTitle) => {
+    const nextList = groupTitle.nextElementSibling;
+    if (!nextList || !nextList.classList.contains('wf-toolbox-list')) return;
+
+    const buttons = Array.from(nextList.querySelectorAll('.wf-toolbox-item'));
+    let visibleCount = 0;
+    buttons.forEach((button) => {
+      const text = String(button.textContent || '').toLowerCase();
+      const show = !query || text.includes(query);
+      button.style.display = show ? '' : 'none';
+      if (show) visibleCount += 1;
+    });
+
+    groupTitle.style.display = visibleCount ? '' : 'none';
+    nextList.style.display = visibleCount ? '' : 'none';
+  });
+}
+
+function openCommandPalette() {
+  if (!refs.commandPalette) return;
+  refs.commandPalette.style.display = 'block';
+  if (refs.commandInput) {
+    refs.commandInput.value = '';
+    refs.commandInput.focus();
+  }
+  renderCommandPaletteItems();
+}
+
+function closeCommandPalette() {
+  if (!refs.commandPalette) return;
+  refs.commandPalette.style.display = 'none';
+}
+
+function getCommandPaletteItems() {
+  const canEdit = !readOnlyMode;
+  return [
+    {
+      id: 'save',
+      title: 'Salvar versao',
+      shortcut: 'Ctrl+S',
+      enabled: canEdit,
+      run: () => saveVersion(),
+    },
+    {
+      id: 'add-user-task',
+      title: 'Adicionar tarefa de usuario',
+      shortcut: 'Alt+1',
+      enabled: canEdit,
+      run: () => addElementFromTool('bpmn:UserTask'),
+    },
+    {
+      id: 'add-service-task',
+      title: 'Adicionar tarefa de servico',
+      shortcut: 'Alt+2',
+      enabled: canEdit,
+      run: () => addElementFromTool('bpmn:ServiceTask'),
+    },
+    {
+      id: 'add-gateway',
+      title: 'Adicionar gateway de decisao',
+      shortcut: 'Alt+3',
+      enabled: canEdit,
+      run: () => addElementFromTool('bpmn:ExclusiveGateway'),
+    },
+    {
+      id: 'connect-mode',
+      title: 'Ativar modo de conexao',
+      shortcut: 'Alt+F',
+      enabled: canEdit,
+      run: () => activateConnectMode(),
+    },
+    {
+      id: 'fit',
+      title: 'Ajustar diagrama na tela',
+      shortcut: 'F',
+      enabled: true,
+      run: () => modeler.get('canvas').zoom('fit-viewport'),
+    },
+    {
+      id: 'undo',
+      title: 'Desfazer',
+      shortcut: 'Ctrl+Z',
+      enabled: canEdit,
+      run: () => modeler.get('commandStack').undo(),
+    },
+    {
+      id: 'redo',
+      title: 'Refazer',
+      shortcut: 'Ctrl+Y',
+      enabled: canEdit,
+      run: () => modeler.get('commandStack').redo(),
+    },
+  ];
+}
+
+function renderCommandPaletteItems() {
+  if (!refs.commandList) return;
+
+  const query = String((refs.commandInput && refs.commandInput.value) || '').trim().toLowerCase();
+  const source = getCommandPaletteItems();
+  const filtered = source.filter((item) => {
+    const target = `${item.title} ${item.shortcut || ''}`.toLowerCase();
+    return !query || target.includes(query);
+  });
+
+  uiState.commandItems = filtered;
+  uiState.activeCommandIndex = filtered.length ? Math.min(uiState.activeCommandIndex, filtered.length - 1) : 0;
+
+  if (!filtered.length) {
+    refs.commandList.innerHTML = '<div class="wf-command-item">Nenhum comando encontrado</div>';
+    return;
+  }
+
+  refs.commandList.innerHTML = filtered.map((item, index) => {
+    const activeClass = index === uiState.activeCommandIndex ? 'is-active' : '';
+    const disabledSuffix = item.enabled ? '' : ' (somente leitura)';
+    return `<button type="button" class="wf-command-item ${activeClass}" data-command-id="${item.id}"><span class="wf-command-title">${item.title}${disabledSuffix}</span><span class="wf-command-shortcut">${item.shortcut || ''}</span></button>`;
+  }).join('');
+
+  refs.commandList.querySelectorAll('.wf-command-item[data-command-id]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const commandId = button.getAttribute('data-command-id');
+      executeCommandPaletteItem(commandId);
+    });
+  });
+}
+
+function executeCommandPaletteItem(commandId) {
+  const item = uiState.commandItems.find((entry) => entry.id === commandId);
+  if (!item || !item.enabled) return;
+  closeCommandPalette();
+  item.run();
 }
 
 function hideResponsibleSuggestions() {
@@ -636,6 +926,67 @@ function shouldShowAutomationExternalSection() {
   return selectedTaskType === 'AUTOMATION';
 }
 
+
+function normalizeDecisionOutcome(value) {
+  const normalized = String(value || '').trim().toUpperCase();
+  if (normalized === 'SIM') return 'SIM';
+  if (normalized === 'NAO') return 'NAO';
+  return '';
+}
+
+function formatDefaultFlowOptionLabel(flowElement) {
+  if (!flowElement || !flowElement.businessObject) return '';
+  const bo = flowElement.businessObject;
+  const flowStore = propsStore.flows[bo.id] || {};
+  const name = String(flowStore.name || bo.name || '').trim();
+  const condition = String(flowStore.condition || '').trim();
+  const outcome = normalizeDecisionOutcome(flowStore.decisionOutcome);
+
+  if (name) return `${name} [${bo.id}]`;
+  if (condition) return `${condition} [${bo.id}]`;
+  if (outcome) return `${outcome} [${bo.id}]`;
+  return bo.id;
+}
+
+function refreshGatewayDefaultFlowOptions(gatewayElement, selectedFlowId = '') {
+  if (!refs.defaultFlow) return;
+
+  refs.defaultFlow.innerHTML = '';
+
+  const emptyOption = document.createElement('option');
+  emptyOption.value = '';
+  emptyOption.textContent = 'Nenhum fluxo padrao';
+  refs.defaultFlow.appendChild(emptyOption);
+
+  if (!gatewayElement || !gatewayElement.businessObject || gatewayElement.businessObject.$type !== 'bpmn:ExclusiveGateway') {
+    setFieldValue(refs.defaultFlow, '');
+    return;
+  }
+
+  const outgoing = Array.isArray(gatewayElement.outgoing) ? gatewayElement.outgoing : [];
+  outgoing.forEach((flowElement) => {
+    const flowId = flowElement && flowElement.businessObject ? flowElement.businessObject.id : '';
+    if (!flowId) return;
+
+    const option = document.createElement('option');
+    option.value = flowId;
+    option.textContent = formatDefaultFlowOptionLabel(flowElement);
+    refs.defaultFlow.appendChild(option);
+  });
+
+  setFieldValue(refs.defaultFlow, selectedFlowId || '');
+}
+
+function updateDecisionSectionVisibility() {
+  if (refs.gatewayDecisionSection) {
+    refs.gatewayDecisionSection.style.display = 'none';
+  }
+
+  if (refs.flowDecisionSection) {
+    refs.flowDecisionSection.style.display = 'none';
+  }
+}
+
 function updateApiEndpointPreview() {
   if (!refs.apiEndpointPreview) return;
   if (!shouldShowApiParamSection()) {
@@ -688,6 +1039,10 @@ function resetPropsPanel() {
   setFieldValue(refs.responsibleId, '');
   setFieldValue(refs.sla, '');
   setFieldValue(refs.condition, '');
+  setFieldValue(refs.decisionQuestion, '');
+  setFieldValue(refs.decisionAnswerField, '__decisionAnswer');
+  setFieldValue(refs.flowDecisionOutcome, '');
+  refreshGatewayDefaultFlowOptions(null);
   setFieldValue(refs.formId, '');
   setFieldValue(refs.automationId, '');
   setFieldValue(refs.automationEndpoint, '');
@@ -701,6 +1056,7 @@ function resetPropsPanel() {
   updateResponsibleHintById('');
   updateApiParamSectionVisibility();
   updateAutomationSectionVisibility();
+  updateDecisionSectionVisibility();
 }
 
 function syncPanelFromSelection() {
@@ -730,6 +1086,10 @@ function syncPanelFromSelection() {
   resolveResponsibleDisplay(store.responsible || '');
   setFieldValue(refs.sla, store.sla || '');
   setFieldValue(refs.condition, store.condition || '');
+  setFieldValue(refs.decisionQuestion, store.decisionQuestion || bo.name || '');
+  setFieldValue(refs.decisionAnswerField, store.decisionAnswerField || '__decisionAnswer');
+  setFieldValue(refs.flowDecisionOutcome, normalizeDecisionOutcome(store.decisionOutcome));
+  refreshGatewayDefaultFlowOptions(el, store.defaultFlow || (bo.default && bo.default.id ? bo.default.id : ''));
   setFieldValue(refs.formId, store.formId || '');
   setFieldValue(refs.automationId, store.automationId || '');
   setFieldValue(refs.automationEndpoint, store.automationEndpoint || '');
@@ -741,6 +1101,7 @@ function syncPanelFromSelection() {
   resolveManagerUsersDisplay(store.managerUsers || []);
   updateApiParamSectionVisibility();
   updateAutomationSectionVisibility();
+  updateDecisionSectionVisibility();
 }
 
 function applyPropertiesFromPanel() {
@@ -770,6 +1131,9 @@ function applyPropertiesFromPanel() {
   store.responsible = selectedResponsibleId;
   store.sla = refs.sla ? refs.sla.value.trim() : '';
   store.condition = refs.condition ? refs.condition.value.trim() : '';
+  if (bo.$type === 'bpmn:SequenceFlow') {
+    store.decisionOutcome = normalizeDecisionOutcome(refs.flowDecisionOutcome ? refs.flowDecisionOutcome.value : '');
+  }
   store.formId = refs.formId && refs.formId.value ? Number(refs.formId.value) : null;
   store.automationId = refs.automationId && refs.automationId.value ? Number(refs.automationId.value) : null;
   store.automationEndpoint = refs.automationEndpoint ? refs.automationEndpoint.value.trim() : '';
@@ -816,15 +1180,38 @@ function applyPropertiesFromPanel() {
     return;
   }
 
+  if (bo.$type === 'bpmn:ExclusiveGateway') {
+    const gwName = refs.name ? refs.name.value.trim() : '';
+    if (!store.decisionQuestion) {
+      store.decisionQuestion = gwName || bo.name || 'Decisao';
+    }
+    if (!store.decisionAnswerField) {
+      store.decisionAnswerField = '__decisionAnswer';
+    }
+  }
+
   const name = refs.name ? refs.name.value.trim() : '';
   store.name = name;
-  modeling.updateProperties(el, { name });
 
-  if (bo.$type === 'bpmn:SequenceFlow' && store.condition) {
-    modeling.updateLabel(el, store.condition);
+  if (bo.$type === 'bpmn:SequenceFlow') {
+    let flowLabel = '';
+    if (store.condition) {
+      flowLabel = store.condition;
+    } else if (name) {
+      flowLabel = name;
+    } else if (store.decisionOutcome === 'SIM') {
+      flowLabel = 'Sim';
+    } else if (store.decisionOutcome === 'NAO') {
+      flowLabel = 'Nao';
+    }
+    modeling.updateProperties(el, { name: flowLabel });
+    modeling.updateLabel(el, flowLabel);
+  } else {
+    modeling.updateProperties(el, { name });
   }
 
   renderTypeOverlays();
+  markDiagramChanged();
   WorkflowUI.showToast('Propriedades aplicadas', 'success');
 }
 
@@ -980,10 +1367,12 @@ function addElementFromTool(type, enterpriseKind = '') {
   const newShape = modeling.createShape(shape, position, parent);
 
   if (selectedElement && selectedElement.businessObject && selectedElement.businessObject.$type !== 'bpmn:SequenceFlow') {
+    _suppressGatewayModal = true;
     try {
       modeling.connect(selectedElement, newShape);
     } catch (_) {
     }
+    _suppressGatewayModal = false;
   }
 
   selected.element = newShape;
@@ -1028,10 +1417,12 @@ function addElementAfterSelected(type) {
 
   const modeling = modeler.get('modeling');
   const newShape = modeling.createShape(createShapeByType(type), { x: element.x + 180, y: element.y + 10 }, element.parent);
+  _suppressGatewayModal = true;
   try {
     modeling.connect(element, newShape);
   } catch (_) {
   }
+  _suppressGatewayModal = false;
   selected.element = newShape;
   syncPanelFromSelection();
 }
@@ -1067,8 +1458,10 @@ function insertElementOnFlow(flow, type) {
     modeling.removeElements([flow]);
   }
 
+  _suppressGatewayModal = true;
   modeling.connect(flow.source, newShape);
   modeling.connect(newShape, flow.target);
+  _suppressGatewayModal = false;
 
   selected.element = newShape;
   syncPanelFromSelection();
@@ -1172,11 +1565,36 @@ function positionFlowInsertFab(flow) {
   refs.flowInsertFab.style.left = `${left}px`;
   refs.flowInsertFab.style.top = `${top}px`;
   refs.flowInsertFab.style.display = 'flex';
+
+  if (refs.flowInsertMenu && refs.flowInsertMenu.style.display !== 'none') {
+    refs.flowInsertMenu.style.left = `${left + 18}px`;
+    refs.flowInsertMenu.style.top = `${top + 12}px`;
+  }
 }
 
 function hideFlowInsertFab() {
   if (!refs.flowInsertFab) return;
   refs.flowInsertFab.style.display = 'none';
+  hideFlowInsertMenu();
+}
+
+function toggleFlowInsertMenu() {
+  if (!refs.flowInsertMenu || !refs.flowInsertFab) return;
+  if (refs.flowInsertMenu.style.display === 'grid') {
+    hideFlowInsertMenu();
+    return;
+  }
+
+  const left = parseFloat(refs.flowInsertFab.style.left || '0') || 0;
+  const top = parseFloat(refs.flowInsertFab.style.top || '0') || 0;
+  refs.flowInsertMenu.style.left = `${left + 18}px`;
+  refs.flowInsertMenu.style.top = `${top + 12}px`;
+  refs.flowInsertMenu.style.display = 'grid';
+}
+
+function hideFlowInsertMenu() {
+  if (!refs.flowInsertMenu) return;
+  refs.flowInsertMenu.style.display = 'none';
 }
 
 function validateDiagram() {
@@ -1188,17 +1606,110 @@ function validateDiagram() {
 
   const startEvents = elements.filter((e) => e.businessObject.$type === 'bpmn:StartEvent');
   const endEvents = elements.filter((e) => e.businessObject.$type === 'bpmn:EndEvent');
-  const userTasks = elements.filter((e) => e.businessObject.$type === 'bpmn:UserTask');
-  const serviceTasks = elements.filter((e) => e.businessObject.$type === 'bpmn:ServiceTask');
   const errors = [];
+
   if (!startEvents.length) errors.push('O processo precisa ter ao menos um Evento inicial.');
+  if (startEvents.length > 1) errors.push('Use apenas 1 Evento inicial para garantir inicio deterministico.');
   if (!endEvents.length) errors.push('O processo precisa ter ao menos um Evento final.');
 
-  userTasks.concat(serviceTasks).forEach((task) => {
-    const incoming = task.incoming || [];
-    const outgoing = task.outgoing || [];
-    if (!incoming.length || !outgoing.length) {
-      errors.push(`A atividade ${task.id} deve estar conectada com entrada e saida.`);
+  elements.forEach((element) => {
+    const bo = element.businessObject;
+    const type = bo.$type;
+
+    if (type === 'bpmn:SequenceFlow') {
+      if (!bo.sourceRef || !bo.targetRef) {
+        errors.push(`Fluxo ${bo.id} esta sem origem ou destino.`);
+      }
+      return;
+    }
+
+    const incoming = Array.isArray(element.incoming) ? element.incoming : [];
+    const outgoing = Array.isArray(element.outgoing) ? element.outgoing : [];
+    const store = propsStore.elements[element.id] || {};
+    const elementName = bo.name ? `${bo.name} (${bo.id})` : bo.id;
+
+    if (type !== 'bpmn:StartEvent' && type !== 'bpmn:Process' && !incoming.length) {
+      errors.push(`Elemento ${elementName} esta sem entrada.`);
+    }
+
+    if (type !== 'bpmn:EndEvent' && type !== 'bpmn:Process' && !outgoing.length) {
+      errors.push(`Elemento ${elementName} esta sem saida.`);
+    }
+
+    if (type === 'bpmn:UserTask') {
+      const taskType = String(store.taskType || 'USER').trim().toUpperCase();
+      const managers = Array.isArray(store.managerUsers) ? store.managerUsers.filter(Boolean) : [];
+      if (taskType === 'MANAGER' && !managers.length) {
+        errors.push(`Atividade ${elementName} com tipo MANAGER exige ao menos um gestor.`);
+      }
+    }
+
+    if (type === 'bpmn:ServiceTask') {
+      const taskType = String(store.taskType || 'SERVICE').trim().toUpperCase();
+      const endpoint = String(store.automationEndpoint || '').trim();
+      const automationId = Number(store.automationId || 0) || 0;
+      const query = String(store.dbQuery || '').trim().toUpperCase();
+
+      if (taskType === 'AUTOMATION' && !endpoint && !automationId) {
+        errors.push(`Atividade ${elementName} do tipo AUTOMATION precisa de endpoint ou automacao cadastrada.`);
+      }
+
+      if (taskType === 'DB') {
+        if (!query) {
+          errors.push(`Atividade ${elementName} do tipo DB precisa de consulta SQL.`);
+        } else if (!(query.startsWith('SELECT') || query.startsWith('EXEC'))) {
+          errors.push(`Atividade ${elementName} do tipo DB aceita apenas SELECT ou EXEC.`);
+        }
+      }
+    }
+
+    if (type === 'bpmn:ExclusiveGateway' && outgoing.length > 1) {
+      const defaultFlowId = String(store.defaultFlow || '').trim();
+      if (defaultFlowId && !outgoing.some((flow) => flow.businessObject && flow.businessObject.id === defaultFlowId)) {
+        errors.push(`Gateway ${elementName} possui fluxo padrao invalido.`);
+      }
+
+      const outcomes = new Set();
+      let hasConditionOrOutcome = false;
+
+      outgoing.forEach((flowElement) => {
+        const flowId = flowElement && flowElement.businessObject ? flowElement.businessObject.id : '';
+        if (!flowId || flowId === defaultFlowId) return;
+
+        const flowStore = propsStore.flows[flowId] || {};
+        const condition = String(flowStore.condition || '').trim();
+        const storedOutcome = normalizeDecisionOutcome(flowStore.decisionOutcome);
+        const flowBoName = String((flowElement.businessObject && flowElement.businessObject.name) || '').trim();
+        const flowStoreName = String(flowStore.name || '').trim();
+        const flowName = flowBoName || flowStoreName;
+
+        // Auto-detect outcome from flow name if not explicitly set
+        let autoOutcome = '';
+        if (!storedOutcome && flowName) {
+          if (/^(sim|yes|s|y)$/i.test(flowName)) autoOutcome = 'SIM';
+          else if (/^(n[aã]o|nao|no|n)$/i.test(flowName)) autoOutcome = 'NAO';
+        }
+        const effectiveOutcome = storedOutcome || autoOutcome;
+
+        if (condition || effectiveOutcome || flowName) {
+          hasConditionOrOutcome = true;
+        }
+
+        if (effectiveOutcome) {
+          if (outcomes.has(effectiveOutcome)) {
+            errors.push(`Gateway ${elementName} possui mapeamento duplicado para ${effectiveOutcome}.`);
+          }
+          outcomes.add(effectiveOutcome);
+        }
+      });
+
+      if (!hasConditionOrOutcome && !defaultFlowId) {
+        errors.push(`Gateway ${elementName} esta ambiguo. Conecte as setas e escolha Sim/Nao para cada uma.`);
+      }
+
+      if (outcomes.size === 1 && !defaultFlowId) {
+        errors.push(`Gateway ${elementName} tem apenas um resultado mapeado. Configure tambem a outra seta como Sim ou Nao.`);
+      }
     }
   });
 
@@ -1238,6 +1749,8 @@ async function saveVersion() {
       throw new Error(data.message || 'Erro ao salvar nova versao');
     }
 
+    setDirtyState(false);
+    clearLocalDraft();
     WorkflowUI.showToast(`Versao v${data.versao} salva e publicada com sucesso`, 'success');
     setTimeout(() => {
       window.location.href = `/processos/${seed.processoId}`;
@@ -1257,6 +1770,7 @@ function bindToolbarButtons() {
   }
 
   bindClick('btnSaveVersion', saveVersion);
+  bindClick('btnCommandPalette', openCommandPalette);
   bindClick('btnZoomIn', () => {
     const canvas = modeler.get('canvas');
     const current = canvas.zoom();
@@ -1301,6 +1815,138 @@ function bindToolbarButtons() {
   });
 }
 
+function bindToolboxSearch() {
+  if (!refs.toolboxSearchInput) return;
+  refs.toolboxSearchInput.addEventListener('input', applyToolboxFilter);
+  applyToolboxFilter();
+}
+
+function bindCommandPalette() {
+  if (!refs.commandPalette || !refs.commandInput || !refs.commandList) return;
+
+  refs.commandInput.addEventListener('input', () => {
+    uiState.activeCommandIndex = 0;
+    renderCommandPaletteItems();
+  });
+
+  refs.commandInput.addEventListener('keydown', (event) => {
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      if (!uiState.commandItems.length) return;
+      uiState.activeCommandIndex = (uiState.activeCommandIndex + 1) % uiState.commandItems.length;
+      renderCommandPaletteItems();
+      return;
+    }
+
+    if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      if (!uiState.commandItems.length) return;
+      uiState.activeCommandIndex = (uiState.activeCommandIndex - 1 + uiState.commandItems.length) % uiState.commandItems.length;
+      renderCommandPaletteItems();
+      return;
+    }
+
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      const item = uiState.commandItems[uiState.activeCommandIndex];
+      if (!item || !item.enabled) return;
+      executeCommandPaletteItem(item.id);
+      return;
+    }
+
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      closeCommandPalette();
+    }
+  });
+
+  refs.commandPalette.addEventListener('click', (event) => {
+    if (event.target === refs.commandPalette) {
+      closeCommandPalette();
+    }
+  });
+}
+
+function deleteSelectedElement() {
+  if (readOnlyMode) return;
+  const element = selected.element;
+  if (!element || !element.businessObject) return;
+  modeler.get('modeling').removeElements([element]);
+  selected.element = null;
+  resetPropsPanel();
+}
+
+function bindKeyboardShortcuts() {
+  document.addEventListener('keydown', (event) => {
+    if (isEditableDomTarget(event.target)) return;
+
+    const key = String(event.key || '').toLowerCase();
+    const ctrlOrMeta = event.ctrlKey || event.metaKey;
+
+    if (ctrlOrMeta && key === 's') {
+      event.preventDefault();
+      if (!readOnlyMode) saveVersion();
+      return;
+    }
+
+    if (ctrlOrMeta && key === 'k') {
+      event.preventDefault();
+      openCommandPalette();
+      return;
+    }
+
+    if (key === 'escape') {
+      closeCommandPalette();
+      hideFlowInsertMenu();
+      if (connectMode.active) clearConnectMode(true);
+      return;
+    }
+
+    if (readOnlyMode) return;
+
+    if (key === 'delete' || key === 'backspace') {
+      event.preventDefault();
+      deleteSelectedElement();
+      return;
+    }
+
+    if (event.altKey && key === '1') {
+      event.preventDefault();
+      addElementFromTool('bpmn:UserTask');
+      return;
+    }
+
+    if (event.altKey && key === '2') {
+      event.preventDefault();
+      addElementFromTool('bpmn:ServiceTask');
+      return;
+    }
+
+    if (event.altKey && key === '3') {
+      event.preventDefault();
+      addElementFromTool('bpmn:ExclusiveGateway');
+      return;
+    }
+
+    if (event.altKey && key === 'f') {
+      event.preventDefault();
+      activateConnectMode();
+      return;
+    }
+
+    if (key === 'f') {
+      event.preventDefault();
+      modeler.get('canvas').zoom('fit-viewport');
+    }
+  });
+
+  window.addEventListener('beforeunload', (event) => {
+    if (!uiState.dirty || readOnlyMode) return;
+    event.preventDefault();
+    event.returnValue = '';
+  });
+}
+
 function bindToolbox() {
   if (readOnlyMode) {
     document.querySelectorAll('.wf-toolbox-item').forEach((button) => {
@@ -1336,33 +1982,125 @@ function bindContextMenuActions() {
 
 function bindFlowInsertFab() {
   if (!refs.flowInsertFab) return;
+
   refs.flowInsertFab.addEventListener('click', () => {
     const element = selected.element;
     if (!element || !element.businessObject || element.businessObject.$type !== 'bpmn:SequenceFlow') return;
-
-    const kind = window.prompt('Inserir no fluxo: tarefa, gateway ou evento?', 'tarefa');
-    if (!kind) return;
-
-    const normalized = kind.trim().toLowerCase();
-    if (normalized.startsWith('t')) {
-      insertElementOnFlow(element, 'bpmn:UserTask');
-    } else if (normalized.startsWith('g')) {
-      insertElementOnFlow(element, 'bpmn:ExclusiveGateway');
-    } else if (normalized.startsWith('e')) {
-      insertElementOnFlow(element, 'bpmn:IntermediateCatchEvent');
-    } else {
-      WorkflowUI.showToast('Opcao invalida para insercao', 'warning');
-    }
+    toggleFlowInsertMenu();
   });
+
+  if (refs.flowInsertMenu) {
+    refs.flowInsertMenu.querySelectorAll('button[data-flow-insert-type]').forEach((button) => {
+      button.addEventListener('click', () => {
+        const element = selected.element;
+        if (!element || !element.businessObject || element.businessObject.$type !== 'bpmn:SequenceFlow') return;
+
+        const type = String(button.getAttribute('data-flow-insert-type') || '').trim();
+        if (!type) return;
+        insertElementOnFlow(element, type);
+        hideFlowInsertMenu();
+      });
+    });
+  }
+
+  document.addEventListener('click', (event) => {
+    if (!refs.flowInsertMenu || !refs.flowInsertFab) return;
+    if (refs.flowInsertFab.contains(event.target)) return;
+    if (refs.flowInsertMenu.contains(event.target)) return;
+    hideFlowInsertMenu();
+  });
+}
+
+function showGatewayOutcomeModal(connection) {
+  if (readOnlyMode || !connection || !connection.businessObject) return;
+  const flowId = connection.businessObject.id;
+  const gatewayEl = connection.source;
+  if (!gatewayEl || !gatewayEl.businessObject) return;
+
+  if (_suppressGatewayModal) return;
+
+  const flowStore = ensureItemStore(flowId, true);
+  if (flowStore.decisionOutcome === 'SIM' || flowStore.decisionOutcome === 'NAO') return;
+
+  const flowBoName = (connection.businessObject && connection.businessObject.name) || '';
+  if (/^(sim|n[aã]o|nao|yes|no)$/i.test(flowBoName.trim())) return;
+
+  const existingSim = Array.isArray(gatewayEl.outgoing) && gatewayEl.outgoing.some((f) => {
+    if (!f || !f.businessObject) return false;
+    return (propsStore.flows[f.businessObject.id] || {}).decisionOutcome === 'SIM';
+  });
+  const existingNao = Array.isArray(gatewayEl.outgoing) && gatewayEl.outgoing.some((f) => {
+    if (!f || !f.businessObject) return false;
+    return (propsStore.flows[f.businessObject.id] || {}).decisionOutcome === 'NAO';
+  });
+
+  if (existingSim && existingNao) return;
+
+  let overlay = document.getElementById('wf-gateway-modal-overlay');
+  if (!overlay) {
+    overlay = document.createElement('div');
+    overlay.id = 'wf-gateway-modal-overlay';
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center';
+    document.body.appendChild(overlay);
+  }
+
+  const gatewayName = (gatewayEl.businessObject.name || 'Decisao').replace(/</g, '&lt;');
+  const targetName = (connection.target && connection.target.businessObject && connection.target.businessObject.name
+    ? connection.target.businessObject.name : '').replace(/</g, '&lt;');
+
+  overlay.innerHTML = `
+    <div style="background:#fff;border-radius:14px;padding:30px 36px;min-width:300px;max-width:400px;box-shadow:0 8px 40px rgba(0,0,0,.22);text-align:center">
+      <div style="font-size:1.05rem;font-weight:700;color:#202124;margin-bottom:6px">Resultado desta seta</div>
+      <div style="font-size:.88rem;color:#5f6368;margin-bottom:22px;line-height:1.5">
+        Gateway: <strong>${gatewayName}</strong>${targetName ? `<br>Destino: <strong>${targetName}</strong>` : ''}<br>
+        Qual o resultado desta decisao?
+      </div>
+      <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
+        ${!existingSim ? '<button id="wf-gw-sim" class="wf-btn-primary" style="min-width:90px">Sim</button>' : ''}
+        ${!existingNao ? '<button id="wf-gw-nao" style="min-width:90px;padding:8px 18px;border-radius:6px;border:1px solid #dadce0;background:#fff;color:#202124;font-size:.9rem;cursor:pointer;font-weight:500">Nao</button>' : ''}
+      </div>
+    </div>`;
+
+  overlay.style.display = 'flex';
+
+  const modeling = modeler.get('modeling');
+
+  function applyOutcome(outcome) {
+    flowStore.decisionOutcome = outcome;
+    const label = outcome === 'SIM' ? 'Sim' : 'Nao';
+    flowStore.name = label;
+    setTimeout(() => {
+      try {
+        modeling.updateProperties(connection, { name: label });
+        modeling.updateLabel(connection, label);
+      } catch (_) {}
+    }, 0);
+
+    const gwStore = ensureItemStore(gatewayEl.businessObject.id, false);
+    if (!gwStore.decisionQuestion) gwStore.decisionQuestion = gatewayEl.businessObject.name || 'Decisao';
+    if (!gwStore.decisionAnswerField) gwStore.decisionAnswerField = '__decisionAnswer';
+
+    overlay.style.display = 'none';
+    markDiagramChanged();
+    WorkflowUI.showToast(`Seta marcada como: ${label}`, 'success');
+  }
+
+  const simBtn = document.getElementById('wf-gw-sim');
+  const naoBtn = document.getElementById('wf-gw-nao');
+  if (simBtn) simBtn.addEventListener('click', () => applyOutcome('SIM'));
+  if (naoBtn) naoBtn.addEventListener('click', () => applyOutcome('NAO'));
 }
 
 function bindModelerEvents() {
   const directEditing = modeler.get('directEditing');
 
-  document.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape' && connectMode.active) {
-      clearConnectMode(true);
-    }
+  modeler.on('commandStack.connection.create.postExecuted', (event) => {
+    if (readOnlyMode || uiState.ignoreCommandStack) return;
+    const context = event.context;
+    if (!context || !context.connection) return;
+    const source = context.connection.source;
+    if (!source || !source.businessObject || source.businessObject.$type !== 'bpmn:ExclusiveGateway') return;
+    showGatewayOutcomeModal(context.connection);
   });
 
   modeler.on('element.click', (event) => {
@@ -1379,6 +2117,11 @@ function bindModelerEvents() {
     } else {
       hideFlowInsertFab();
     }
+  });
+
+  modeler.on('commandStack.changed', () => {
+    if (uiState.ignoreCommandStack) return;
+    markDiagramChanged();
   });
 
   modeler.on('element.changed', () => {
@@ -1399,6 +2142,12 @@ function bindModelerEvents() {
 
   modeler.on('element.dblclick', (event) => {
     if (!event || !event.element) return;
+    if (event.element.businessObject && event.element.businessObject.$type === 'bpmn:SequenceFlow') {
+      selected.element = event.element;
+      syncPanelFromSelection();
+      if (refs.condition) refs.condition.focus();
+      return;
+    }
     directEditing.activate(event.element);
   });
 }
@@ -1406,6 +2155,14 @@ function bindModelerEvents() {
 function bindPropertyActions() {
   if (!refs.applyProps) return;
   refs.applyProps.addEventListener('click', applyPropertiesFromPanel);
+
+  if (refs.propsForm) {
+    refs.propsForm.addEventListener('keydown', (event) => {
+      if (!event.ctrlKey || String(event.key || '').toLowerCase() !== 'enter') return;
+      event.preventDefault();
+      applyPropertiesFromPanel();
+    });
+  }
 
   if (refs.taskType) {
     refs.taskType.addEventListener('change', () => {
@@ -1433,9 +2190,12 @@ function bindPropertyActions() {
 
 async function bootstrap() {
   const xml = seed.bpmnXml || defaultXml;
+  uiState.ignoreCommandStack = true;
   await modeler.importXML(xml);
+  uiState.ignoreCommandStack = false;
   modeler.get('canvas').zoom('fit-viewport');
   resetPropsPanel();
+  setDirtyState(false);
 
   if (readOnlyMode) {
     WorkflowUI.showToast('Modelador aberto em modo somente leitura', 'info');
@@ -1443,13 +2203,18 @@ async function bootstrap() {
 
   bindToolbarButtons();
   bindToolbox();
+  bindToolboxSearch();
+  bindCommandPalette();
   bindContextMenuActions();
   bindFlowInsertFab();
   bindModelerEvents();
   bindPropertyActions();
+  bindKeyboardShortcuts();
   bindResponsibleLookup();
   bindManagerUsersLookup();
   renderTypeOverlays();
+
+  await tryRestoreLocalDraft();
 }
 
 bootstrap().catch((error) => {

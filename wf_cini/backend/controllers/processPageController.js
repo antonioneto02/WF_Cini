@@ -149,6 +149,10 @@ async function instancias(req, res, next) {
       page: req.query.page || 1,
       pageSize: req.query.pageSize || 100,
       status: req.query.status || null,
+      identificador: req.query.identificador || null,
+      solicitante: req.query.solicitante || null,
+      startDate: req.query.startDate || null,
+      endDate: req.query.endDate || null,
     });
 
     return res.render('processos/instances', {
@@ -157,6 +161,10 @@ async function instancias(req, res, next) {
       payload,
       filters: {
         status: req.query.status || '',
+        identificador: req.query.identificador || '',
+        solicitante: req.query.solicitante || '',
+        startDate: req.query.startDate || '',
+        endDate: req.query.endDate || '',
       },
     });
   } catch (err) {

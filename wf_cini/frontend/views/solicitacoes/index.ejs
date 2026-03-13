@@ -51,10 +51,18 @@
 <!-- Filter bar -->
 <div class="wf-filter-bar" style="border-radius:0">
   <form style="display:flex;gap:10px;align-items:center;width:100%">
-    <input type="hidden" name="status" value="<%= filters.status || '' %>" />
-    <input name="processoId" value="<%= filters.processoId || '' %>" placeholder="Processo ID" class="wf-filter-input" style="max-width:160px" />
-    <input name="q" value="<%= filters.q || '' %>" placeholder="Buscar solicitacao..." class="wf-filter-input" style="flex:1" />
-    <button type="submit" class="wf-btn-primary" style="padding:7px 18px"><i class="bi bi-search"></i> Filtrar</button>
+    <input name="processoId" value="<%= filters.processoId || '' %>" placeholder="Processo" class="wf-filter-input" style="max-width:160px" />
+    <input name="identificador" value="<%= filters.identificador || '' %>" placeholder="Identificador" class="wf-filter-input" style="max-width:160px" />
+    <input name="solicitante" value="<%= filters.solicitante || '' %>" placeholder="Solicitante" class="wf-filter-input" style="max-width:160px" />
+    <input name="desc" value="<%= filters.desc || '' %>" placeholder="desc" class="wf-filter-input" style="flex:1" />
+    <select name="status" class="wf-filter-input" style="max-width:160px">
+      <option value="" <%= !filters.status ? 'selected' : '' %>>Todos</option>
+      <option value="EM_ANDAMENTO" <%= filters.status === 'EM_ANDAMENTO' ? 'selected' : '' %>>Em andamento</option>
+      <option value="CONCLUIDA" <%= filters.status === 'CONCLUIDA' ? 'selected' : '' %>>Concluída</option>
+      <option value="CANCELADA" <%= filters.status === 'CANCELADA' ? 'selected' : '' %>>Cancelada</option>
+    </select>
+    <input type="date" name="startDate" value="<%= filters.startDate || '' %>" class="wf-filter-input" style="max-width:160px" />
+    <input type="date" name="endDate" value="<%= filters.endDate || '' %>" class="wf-filter-input" style="max-width:160px" />
   </form>
 </div>
 
@@ -66,6 +74,8 @@
         <tr>
           <th style="width:80px">#</th>
           <th>Processo</th>
+          <th>desc</th>
+          <th>Identificador</th>
           <th>Solicitante</th>
           <th>Status</th>
           <th>Atividade atual</th>
@@ -76,16 +86,18 @@
       <tbody>
         <% if (!result.data.length) { %>
           <tr>
-            <td colspan="7" style="text-align:center;padding:48px 0">
+            <td colspan="9" style="text-align:center;padding:48px 0">
               <i class="bi bi-inbox" style="font-size:2.5rem;color:#dadce0"></i>
               <p style="color:#5f6368;margin:8px 0 0">Nenhuma solicitacao encontrada.</p>
             </td>
           </tr>
         <% } %>
         <% result.data.forEach(function(item){ %>
-          <tr onclick="window.location='/solicitacoes/<%= item.id %>'" style="cursor:pointer">
+          <tr>
             <td style="font-weight:600;color:var(--wf-primary)">#<%= item.id %></td>
             <td><%= item.processo_nome %> <span style="color:#5f6368;font-size:.8rem">v<%= item.versao %></span></td>
+            <td><%= item.processo_desc_iden || '-' %></td>
+            <td><%= item.identificador || '-' %></td>
             <td><%= item.solicitante || '-' %></td>
             <td><span class="<%= statusBadge(item.status) %>"><%= statusLabel(item) %></span></td>
             <td><%= item.atividade_atual_nome || '-' %></td>

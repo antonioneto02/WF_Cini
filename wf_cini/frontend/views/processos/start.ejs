@@ -16,6 +16,10 @@
 </div>
 
 <div style="display:grid;grid-template-columns:2fr 1fr;gap:16px">
+  <%
+    const requiresIdentifier = Boolean(Number(details.process.usa_identificador || 0));
+    const identifierType = String(details.process.tipo_identificador || '').toUpperCase();
+  %>
   <div class="wf-panel">
     <h3 style="font-size:.95rem;font-weight:600;margin:0 0 14px;color:#202124">Formulario inicial</h3>
 
@@ -30,6 +34,24 @@
     </div>
 
     <form id="startProcessForm" data-process-id="<%= details.process.id %>" style="display:grid;gap:14px">
+      <% if (requiresIdentifier) { %>
+        <div>
+          <label class="wf-form-label">
+            <%= details.identifierLabel ? details.identifierLabel : 'Identificador da solicitacao' %>
+            <span style="color:#d93025">*</span>
+            <small style="font-weight:400;color:#5f6368">(<%= identifierType === 'SEQUENCIAL' ? 'campo numérico' : 'texto livre' %>)</small>
+          </label>
+          <input
+            id="startIdentifierInput"
+            name="identifier"
+            class="wf-form-input"
+            placeholder="<%= identifierType === 'SEQUENCIAL' ? 'Ex: 123456' : 'Ex: NOTA-5487' %>"
+            <%= identifierType === 'SEQUENCIAL' ? 'inputmode="numeric"' : '' %>
+            required
+          />
+        </div>
+      <% } %>
+
       <div id="startDynamicFormRoot" style="display:grid;gap:14px"></div>
 
       <div>
@@ -55,6 +77,11 @@
 
 <script id="startProcessSeed" type="application/json"><%- JSON.stringify({
   forms: details.forms,
+  identifier: {
+    required: requiresIdentifier,
+    type: identifierType || null,
+    label: details.identifierLabel || null,
+  },
 }) %></script>
 
 <%- include('../partials/shellEnd', {

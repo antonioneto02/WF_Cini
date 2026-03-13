@@ -43,10 +43,9 @@
 <div class="wf-filter-bar">
   <form method="GET" action="<%= onlyMine ? '/processos/meus' : '/processos' %>" style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;width:100%">
     <div style="flex:1;min-width:220px">
-      <label>Pesquisar</label>
-      <input name="search" value="<%= search %>" placeholder="Nome ou codigo do processo" />
+      <label>Desc</label>
+      <input name="desc" value="<%= search %>" placeholder="Descrição do identificador" />
     </div>
-    <button class="wf-btn-primary" type="submit"><i class="bi bi-search"></i> Buscar</button>
   </form>
 </div>
 
@@ -68,22 +67,13 @@
             <h3><%= item.nome %></h3>
             <p><%= item.codigo %> &middot; v<%= item.versao || '0' %></p>
           </div>
+          <div style="margin-left:auto;display:flex;align-items:center">
+            <a href="/processos/<%= item.id %>/instancias" class="wf-btn-secondary" style="font-size:12px;padding:6px 10px;margin-right:6px"><i class="bi bi-diagram-2" style="margin-right:6px"></i> Ver fluxos</a>
+          </div>
         </div>
 
         <div class="wf-process-card-body">
-          <% const steps = item.progress && item.progress.steps ? item.progress.steps : []; %>
-          <% if (steps.length) { %>
-            <div class="wf-step-line" style="margin-bottom:6px">
-              <% steps.forEach(function(step){ %>
-                <div class="wf-step-point <%= step.state === 'DONE' ? 'is-done' : (step.state === 'CURRENT' ? 'is-current' : '') %>" title="<%= step.name %>"></div>
-              <% }) %>
-            </div>
-            <p style="font-size:11px;color:#5f6368;margin:0">
-              <%= (item.progress && item.progress.summary_text) ? item.progress.summary_text : '' %>
-            </p>
-          <% } else { %>
-            <p style="font-size:12px;color:#9aa0a6;margin:0">Sem execucao ativa</p>
-          <% } %>
+          <!-- resumo removido conforme solicitado -->
 
           <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">
             <span class="wf-badge wf-badge-<%= item.status === 'ATIVO' ? 'green' : 'gray' %>"><%= item.status %></span>

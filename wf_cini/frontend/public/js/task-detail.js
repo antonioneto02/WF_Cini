@@ -15,6 +15,20 @@
     selectedUsers: new Map(),
   };
 
+  function safeJsonParse(value, fallback) {
+    if (!value) return fallback;
+    try {
+      return JSON.parse(value);
+    } catch (_) {
+      return fallback;
+    }
+  }
+
+  const taskFormConfig = safeJsonParse(seed.task && seed.task.form_config_json ? seed.task.form_config_json : null, {});
+  const decisionGatewayConfig = taskFormConfig && typeof taskFormConfig.decisionGateway === 'object'
+    ? taskFormConfig.decisionGateway
+    : null;
+
   function escapeHtml(value) {
     return String(value || '')
       .replace(/&/g, '&amp;')
@@ -39,6 +53,75 @@
 
   function normalizeUserId(value) {
     return String(value || '').trim().toUpperCase();
+  }
+
+  function normalizeDecisionValue(value) {
+    const normalized = String(value || '')
+      .trim()
+      .toUpperCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '');
+
+    if (!normalized) return null;
+    if (['SIM', 'S', 'YES', 'Y', 'TRUE', '1', 'APROVAR', 'APROVADO', 'OK'].includes(normalized)) return 'SIM';
+    if (['NAO', 'N', 'NO', 'FALSE', '0', 'REJEITAR', 'REPROVAR', 'NEGAR'].includes(normalized)) return 'NAO';
+    return null;
+  }
+
+  function getDecisionAnswerField(config) {
+    return String((config && config.answerField) || '__decisionAnswer').trim() || '__decisionAnswer';
+  }
+
+  function getDecisionOptionLabel(config, optionValue, fallbackLabel) {
+    const options = config && Array.isArray(config.options) ? config.options : [];
+    const option = options.find(function (item) {
+      return String((item && item.value) || '').trim().toUpperCase() === optionValue;
+    });
+
+    return option && option.label ? String(option.label).trim() : fallbackLabel;
+  }
+
+  function createDecisionField(config) {
+    const answerField = getDecisionAnswerField(config);
+    const question = String((config && config.question) || 'Selecione Sim ou Nao para decidir o proximo passo').trim();
+    const yesLabel = getDecisionOptionLabel(config, 'SIM', 'Sim');
+    const noLabel = getDecisionOptionLabel(config, 'NAO', 'Nao');
+
+    const wrapper = document.createElement('fieldset');
+    wrapper.className = 'grid gap-2 p-3 rounded-xl border border-slate-200 bg-slate-50';
+
+    const legend = document.createElement('legend');
+    legend.textContent = question;
+    legend.className = 'text-sm font-semibold px-1';
+    wrapper.appendChild(legend);
+
+    const options = document.createElement('div');
+    options.className = 'flex flex-wrap gap-4';
+
+    const yesItem = document.createElement('label');
+    yesItem.className = 'inline-flex items-center gap-2';
+    const yesInput = document.createElement('input');
+    yesInput.type = 'radio';
+    yesInput.name = answerField;
+    yesInput.value = 'SIM';
+    yesInput.required = true;
+    yesItem.appendChild(yesInput);
+    yesItem.appendChild(document.createTextNode(yesLabel));
+
+    const noItem = document.createElement('label');
+    noItem.className = 'inline-flex items-center gap-2';
+    const noInput = document.createElement('input');
+    noInput.type = 'radio';
+    noInput.name = answerField;
+    noInput.value = 'NAO';
+    noItem.appendChild(noInput);
+    noItem.appendChild(document.createTextNode(noLabel));
+
+    options.appendChild(yesItem);
+    options.appendChild(noItem);
+    wrapper.appendChild(options);
+
+    return wrapper;
   }
 
   function hideMentionSuggestions() {
@@ -314,9 +397,17 @@
   function renderDynamicForm() {
     if (!formRoot) return;
 
-    const schema = seed.form && seed.form.schema_json ? JSON.parse(seed.form.schema_json) : { fields: [] };
+    const schema = seed.form && seed.form.schema_json
+      ? safeJsonParse(seed.form.schema_json, { fields: [] })
+      : { fields: [] };
+    const fields = Array.isArray(schema.fields) ? schema.fields : [];
+    const hasDecisionForm = Boolean(decisionGatewayConfig);
 
-    if (!schema.fields || !schema.fields.length) {
+    if (hasDecisionForm) {
+      formRoot.appendChild(createDecisionField(decisionGatewayConfig));
+    }
+
+    if (!fields.length && !hasDecisionForm) {
       const empty = document.createElement('p');
       empty.className = 'text-sm text-slate-500';
       empty.textContent = 'Esta tarefa nao possui formulario vinculado.';
@@ -324,9 +415,27 @@
       return;
     }
 
-    schema.fields.forEach(function (field) {
+    fields.forEach(function (field) {
       formRoot.appendChild(createField(field));
     });
+  }
+
+  function validateDecisionGatewayResponse() {
+    if (!decisionGatewayConfig || !completeForm) return null;
+
+    const answerField = getDecisionAnswerField(decisionGatewayConfig);
+    const selected = completeForm.querySelector(`input[type="radio"][name="${answerField}"]:checked`);
+    if (!selected) {
+      return 'Selecione Sim ou Nao para decidir o caminho do processo.';
+    }
+
+    const normalized = normalizeDecisionValue(selected.value);
+    if (!normalized) {
+      return 'Valor da decisao invalido. Escolha Sim ou Nao.';
+    }
+
+    selected.value = normalized;
+    return null;
   }
 
   function collectResponse() {
@@ -356,9 +465,86 @@
     return response;
   }
 
+  function extractFieldLabel(control) {
+    if (!control) return 'campo obrigatorio';
+
+    const fieldset = control.closest('fieldset');
+    if (fieldset) {
+      const legend = fieldset.querySelector('legend');
+      if (legend && legend.textContent && legend.textContent.trim()) {
+        return legend.textContent.trim();
+      }
+    }
+
+    const wrapper = control.closest('div');
+    if (wrapper) {
+      const label = wrapper.querySelector('label');
+      if (label && label.textContent && label.textContent.trim()) {
+        return label.textContent.trim();
+      }
+    }
+
+    return control.name || 'campo obrigatorio';
+  }
+
+  function validateRequiredControls() {
+    if (!completeForm) return null;
+
+    const requiredControls = Array.from(completeForm.querySelectorAll('[name][required]'));
+    const checkedRadioNames = new Set();
+
+    for (const control of requiredControls) {
+      if (!control || control.disabled) continue;
+
+      if (control.type === 'radio') {
+        if (checkedRadioNames.has(control.name)) continue;
+        checkedRadioNames.add(control.name);
+
+        const selected = completeForm.querySelector(`input[type="radio"][name="${control.name}"]:checked`);
+        if (!selected) {
+          return `Preencha o campo obrigatorio: ${extractFieldLabel(control)}`;
+        }
+        continue;
+      }
+
+      if (control.type === 'checkbox') {
+        if (!control.checked) {
+          return `Preencha o campo obrigatorio: ${extractFieldLabel(control)}`;
+        }
+        continue;
+      }
+
+      if (control.type === 'file') {
+        if (!control.files || !control.files[0]) {
+          return `Preencha o campo obrigatorio: ${extractFieldLabel(control)}`;
+        }
+        continue;
+      }
+
+      if (!String(control.value || '').trim()) {
+        return `Preencha o campo obrigatorio: ${extractFieldLabel(control)}`;
+      }
+    }
+
+    return null;
+  }
+
   async function complete(action) {
     const taskId = Number(completeForm.dataset.taskId);
     const observacao = completeForm.observacao.value.trim();
+    const requiredValidationError = validateRequiredControls();
+
+    if (requiredValidationError) {
+      WorkflowUI.showToast(requiredValidationError, 'warning');
+      return;
+    }
+
+    const decisionValidationError = validateDecisionGatewayResponse();
+
+    if (decisionValidationError) {
+      WorkflowUI.showToast(decisionValidationError, 'warning');
+      return;
+    }
 
     try {
       WorkflowUI.setLoader(true);

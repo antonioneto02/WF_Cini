@@ -60,11 +60,13 @@
     <div class="wf-panel wf-dash-card">
       <div class="wf-dash-card-header"><h3><i class="bi bi-check2-square"></i> Minhas tarefas</h3><a href="/tarefas" class="wf-dash-link">Ver todas <i class="bi bi-chevron-right"></i></a></div>
       <% if (!highlights.tarefas.length) { %><div class="wf-dash-empty"><i class="bi bi-inbox"></i><p>Nenhuma tarefa na sua fila.</p></div><% } else { %>
-        <table class="wf-table" style="margin:0"><thead><tr><th>Atividade</th><th>Processo</th><th>Status</th></tr></thead><tbody>
+        <table class="wf-table" style="margin:0"><thead><tr><th>Atividade</th><th>Processo</th><th>Status</th><th style="width:90px">Acoes</th></tr></thead><tbody>
           <% highlights.tarefas.forEach(function(item){ %>
-            <tr onclick="window.location='/tarefas/<%= item.id %>'" style="cursor:pointer">
-              <td style="font-weight:500"><%= item.nome_etapa %></td><td style="color:#5f6368;font-size:.85rem"><%= item.processo_nome %></td>
+            <tr>
+              <td style="font-weight:500"><%= item.nome_etapa %></td>
+              <td style="color:#5f6368;font-size:.85rem"><%= item.processo_nome %></td>
               <td><span class="<%= item.status === 'CONCLUIDA' ? 'wf-badge-green' : item.status === 'EM_ANDAMENTO' ? 'wf-badge-blue' : 'wf-badge-yellow' %>"><%= item.status === 'CONCLUIDA' ? 'Concluida' : item.status === 'EM_ANDAMENTO' ? 'Em andamento' : 'Pendente' %></span></td>
+              <td><a href="/tarefas/<%= item.id %>" class="wf-btn-secondary" style="padding:4px 10px;font-size:.82rem">Abrir</a></td>
             </tr>
           <% }) %>
         </tbody></table>
@@ -76,11 +78,14 @@
     <div class="wf-panel wf-dash-card">
       <div class="wf-dash-card-header"><h3><i class="bi bi-file-earmark-text"></i> Solicitacoes recentes</h3><a href="/solicitacoes" class="wf-dash-link">Ver todas <i class="bi bi-chevron-right"></i></a></div>
       <% if (!highlights.solicitacoes.length) { %><div class="wf-dash-empty"><i class="bi bi-inbox"></i><p>Sem solicitacoes recentes.</p></div><% } else { %>
-        <table class="wf-table" style="margin:0"><thead><tr><th>#</th><th>Processo</th><th>Solicitante</th><th>Status</th></tr></thead><tbody>
+        <table class="wf-table" style="margin:0"><thead><tr><th>#</th><th>Processo</th><th>Solicitante</th><th>Status</th><th style="width:90px">Acoes</th></tr></thead><tbody>
           <% highlights.solicitacoes.forEach(function(item){ %>
-            <tr onclick="window.location='/solicitacoes/<%= item.id %>'" style="cursor:pointer">
-              <td style="font-weight:600;color:var(--wf-primary)">#<%= item.id %></td><td><%= item.processo_nome %></td><td style="color:#5f6368;font-size:.85rem"><%= item.solicitante || '-' %></td>
+            <tr>
+              <td style="font-weight:600;color:var(--wf-primary)">#<%= item.id %></td>
+              <td><%= item.processo_nome %></td>
+              <td style="color:#5f6368;font-size:.85rem"><%= item.solicitante || '-' %></td>
               <td><span class="<%= item.status === 'CONCLUIDA' ? 'wf-badge-green' : 'wf-badge-blue' %>"><%= item.status === 'CONCLUIDA' ? 'Concluida' : 'Em andamento' %></span></td>
+              <td><a href="/solicitacoes/<%= item.id %>" class="wf-btn-secondary" style="padding:4px 10px;font-size:.82rem">Abrir</a></td>
             </tr>
           <% }) %>
         </tbody></table>
@@ -92,9 +97,14 @@
     <div class="wf-panel wf-dash-card">
       <div class="wf-dash-card-header"><h3><i class="bi bi-diagram-3"></i> Processos</h3><a href="/processos" class="wf-dash-link">Ver todos <i class="bi bi-chevron-right"></i></a></div>
       <% if (!highlights.processos.length) { %><div class="wf-dash-empty"><i class="bi bi-inbox"></i><p>Sem processos para mostrar.</p></div><% } else { %>
-        <table class="wf-table" style="margin:0"><thead><tr><th>Nome</th><th>Codigo</th><th>Status</th></tr></thead><tbody>
+        <table class="wf-table" style="margin:0"><thead><tr><th>Nome</th><th>Codigo</th><th>Status</th><th style="width:90px">Acoes</th></tr></thead><tbody>
           <% highlights.processos.forEach(function(item){ %>
-            <tr onclick="window.location='/processos/<%= item.id %>'" style="cursor:pointer"><td style="font-weight:500"><%= item.nome %></td><td style="color:#5f6368;font-size:.85rem"><%= item.codigo %></td><td><span class="<%= item.status === 'ATIVO' ? 'wf-badge-green' : 'wf-badge-gray' %>"><%= item.status %></span></td></tr>
+            <tr>
+              <td style="font-weight:500"><%= item.nome %></td>
+              <td style="color:#5f6368;font-size:.85rem"><%= item.codigo %></td>
+              <td><span class="<%= item.status === 'ATIVO' ? 'wf-badge-green' : 'wf-badge-gray' %>"><%= item.status %></span></td>
+              <td><a href="/processos/<%= item.id %>" class="wf-btn-secondary" style="padding:4px 10px;font-size:.82rem">Abrir</a></td>
+            </tr>
           <% }) %>
         </tbody></table>
       <% } %>

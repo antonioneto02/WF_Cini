@@ -13,6 +13,7 @@ CREATE TABLE [dbo].[INSTANCIAS_PROCESSO](
     [processo_id] [bigint] NOT NULL,
     [versao_processo_id] [bigint] NOT NULL,
     [solicitante] [nvarchar](120) NULL,
+    [identificador] [nvarchar](180) NULL,
     [dados_json] [nvarchar](max) NULL,
     [estado_execucao_json] [nvarchar](max) NULL,
     [elemento_atual_id] [nvarchar](120) NULL,
@@ -49,4 +50,7 @@ CREATE INDEX idx_instancias_processo_status ON [dbo].[INSTANCIAS_PROCESSO] ([pro
 GO
 
 CREATE INDEX idx_instancias_iniciado ON [dbo].[INSTANCIAS_PROCESSO] ([iniciado_em])
+GO
+
+CREATE INDEX idx_instancias_identificador ON [dbo].[INSTANCIAS_PROCESSO] ([identificador])
 GO

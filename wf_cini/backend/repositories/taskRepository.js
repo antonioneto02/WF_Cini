@@ -1,5 +1,24 @@
 const db = require('../models/db');
 
+const _tableColumnCache = {};
+
+async function hasTableColumn(tableName, columnName) {
+  const key = `${tableName}.${columnName}`;
+  if (_tableColumnCache[key] !== undefined) return _tableColumnCache[key];
+  try {
+    const rows = await db.query(
+      `SELECT COUNT(*) AS cnt FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = :tableName AND COLUMN_NAME = :columnName`,
+      { tableName, columnName }
+    );
+    const exists = rows && rows[0] && Number(rows[0].cnt || 0) > 0;
+    _tableColumnCache[key] = exists;
+    return exists;
+  } catch (err) {
+    _tableColumnCache[key] = false;
+    return false;
+  }
+}
+
 function normalizeIdentifier(value) {
   return String(value || '').trim().toUpperCase();
 }
@@ -66,6 +85,18 @@ async function createTask({
 }
 
 async function getTaskById(taskId) {
+  const hasProcessDesc = await hasTableColumn('PROCESSOS', 'desc_iden');
+  const hasInstDesc = await hasTableColumn('INSTANCIAS_PROCESSO', 'desc_iden');
+
+  let descSelect = '';
+  if (hasProcessDesc && hasInstDesc) {
+    descSelect = ', COALESCE(p.desc_iden, i.desc_iden) AS processo_desc_iden';
+  } else if (hasProcessDesc) {
+    descSelect = ', p.desc_iden AS processo_desc_iden';
+  } else if (hasInstDesc) {
+    descSelect = ', i.desc_iden AS processo_desc_iden';
+  }
+
   const rows = await db.query(
     `SELECT t.id, t.instancia_processo_id, t.processo_id, t.versao_processo_id,
             t.elemento_id AS element_id, t.nome_etapa,
@@ -74,13 +105,14 @@ async function getTaskById(taskId) {
             t.configuracao_formulario_json AS form_config_json, t.resposta_json,
             t.acao_final, t.observacao_final, t.status, t.iniciado_em AS started_at,
             t.concluido_em AS completed_at, t.concluido_por AS completed_by, t.dt_criacao AS created_at,
-            p.nome AS processo_nome, i.solicitante, i.dados_json AS payload_json
+                 p.nome AS processo_nome, i.solicitante, i.identificador, i.dados_json AS payload_json${descSelect}
      FROM tarefas t
      JOIN processos p ON p.id = t.processo_id
      JOIN instancias_processo i ON i.id = t.instancia_processo_id
      WHERE t.id = :taskId`,
     { taskId }
   );
+
   return rows[0] || null;
 }
 
@@ -89,6 +121,11 @@ async function listKanbanTasks({
   userKeys,
   status,
   processoId,
+  processName = null,
+  instanciaId = null,
+  identificador = null,
+  startDate = null,
+  endDate = null,
   responsavel,
   search,
   page = 1,
@@ -99,31 +136,68 @@ async function listKanbanTasks({
   const offset = (safePage - 1) * safePageSize;
   const likeSearch = `%${search || ''}%`;
   const normalizedResponsavel = normalizeIdentifier(responsavel) || null;
+  const safeProcessName = processName && String(processName).trim() ? String(processName).trim() : null;
+  const safeIdentificador = identificador && String(identificador).trim() ? String(identificador).trim() : null;
+  const safeInstanciaId = instanciaId ? Number(instanciaId) : null;
+  const safeStartDate = startDate && String(startDate).trim() ? String(startDate).trim() : null;
+  const safeEndDate = endDate && String(endDate).trim() ? String(endDate).trim() : null;
   const normalizedUserKeys = normalizeIdentifierList((userKeys && userKeys.length ? userKeys : [user]) || []);
 
   const queryParams = {
     status,
     processoId,
+    processName: safeProcessName,
+    instanciaId: safeInstanciaId,
+    identificador: safeIdentificador,
+    startDate: safeStartDate,
+    endDate: safeEndDate,
     responsavel: normalizedResponsavel,
     likeSearch,
     limit: safePageSize,
     offset,
+    processNameLike: safeProcessName ? `%${safeProcessName}%` : null,
+    identificadorLike: safeIdentificador ? `%${safeIdentificador}%` : null,
   };
 
   const userVisibilityClause = buildUserVisibilityClause(normalizedUserKeys, queryParams);
+  // Detect optional columns before building WHERE clauses to avoid SQL errors
+  const hasProcessDesc = await hasTableColumn('PROCESSOS', 'desc_iden');
+  const hasInstDesc = await hasTableColumn('INSTANCIAS_PROCESSO', 'desc_iden');
+  const hasProcessCodigo = await hasTableColumn('PROCESSOS', 'codigo');
+
+  let processNameClause = '(:processName IS NULL OR p.nome LIKE :processNameLike)';
+  if (hasProcessCodigo) {
+    processNameClause = '(:processName IS NULL OR (p.nome LIKE :processNameLike OR p.codigo LIKE :processNameLike))';
+  }
+
   const baseFromWhere = `
-     FROM tarefas t
-     JOIN processos p ON p.id = t.processo_id
-     JOIN instancias_processo i ON i.id = t.instancia_processo_id
-     WHERE (:status IS NULL OR t.status = :status)
+      FROM tarefas t
+      JOIN processos p ON p.id = t.processo_id
+      JOIN instancias_processo i ON i.id = t.instancia_processo_id
+      WHERE (:status IS NULL OR t.status = :status)
        AND (:processoId IS NULL OR t.processo_id = :processoId)
+       AND ${processNameClause}
+       AND (:instanciaId IS NULL OR t.instancia_processo_id = :instanciaId)
+       AND (:identificador IS NULL OR i.identificador LIKE :identificadorLike)
+       AND (:startDate IS NULL OR t.dt_criacao >= :startDate)
+       AND (:endDate IS NULL OR t.dt_criacao < DATEADD(day, 1, :endDate))
        AND (:responsavel IS NULL OR UPPER(LTRIM(RTRIM(ISNULL(t.responsavel, '')))) = :responsavel)
        ${userVisibilityClause}
        AND (
-          t.nome_etapa LIKE :likeSearch
-          OR p.nome LIKE :likeSearch
-          OR i.solicitante LIKE :likeSearch
+         t.nome_etapa LIKE :likeSearch
+         OR p.nome LIKE :likeSearch
+         OR i.solicitante LIKE :likeSearch
        )`;
+  
+
+  let descSelect = '';
+  if (hasProcessDesc && hasInstDesc) {
+    descSelect = ', COALESCE(p.desc_iden, i.desc_iden) AS processo_desc_iden';
+  } else if (hasProcessDesc) {
+    descSelect = ', p.desc_iden AS processo_desc_iden';
+  } else if (hasInstDesc) {
+    descSelect = ', i.desc_iden AS processo_desc_iden';
+  }
 
   const rows = await db.query(
       `SELECT t.id, t.nome_etapa, t.status,
@@ -131,7 +205,7 @@ async function listKanbanTasks({
         t.sla_horas,
         t.elemento_id AS element_id, t.versao_processo_id,
             t.dt_criacao AS created_at, t.iniciado_em AS started_at, t.concluido_em AS completed_at, t.instancia_processo_id,
-            p.nome AS processo_nome, i.solicitante
+          p.nome AS processo_nome, i.solicitante, i.identificador${descSelect}
      ${baseFromWhere}
      ORDER BY t.dt_criacao DESC
      OFFSET :offset ROWS FETCH NEXT :limit ROWS ONLY`,

@@ -15,6 +15,10 @@ async function index(req, res, next) {
       pageSize: req.query.pageSize || 40,
       processoId: req.query.processoId ? Number(req.query.processoId) : null,
       status: req.query.status || null,
+      identificador: req.query.identificador || null,
+      solicitante: req.query.solicitante || null,
+      startDate: req.query.startDate || null,
+      endDate: req.query.endDate || null,
     });
 
     const visibleItems = [];
@@ -39,6 +43,11 @@ async function index(req, res, next) {
       filters: {
         processoId: req.query.processoId || '',
         status: req.query.status || '',
+        desc: req.query.desc || req.query.search || '',
+        identificador: req.query.identificador || '',
+        solicitante: req.query.solicitante || '',
+        startDate: req.query.startDate || '',
+        endDate: req.query.endDate || '',
       },
     });
   } catch (err) {
@@ -56,7 +65,7 @@ async function detalhes(req, res, next) {
         pageTitle: 'Solicitacoes',
         pageDescription: 'Solicitacao nao encontrada',
         result: { data: [], total: 0 },
-        filters: { processoId: '', status: '' },
+        filters: { processoId: '', status: '', desc: '' },
       });
     }
 
@@ -66,7 +75,7 @@ async function detalhes(req, res, next) {
         pageTitle: 'Solicitacoes',
         pageDescription: 'Sem permissao para visualizar esta solicitacao',
         result: { data: [], total: 0 },
-        filters: { processoId: '', status: '' },
+        filters: { processoId: '', status: '', desc: '' },
       });
     }
 

@@ -21,6 +21,7 @@
   <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid #e0e0e0">
     <div style="display:flex;gap:6px;flex-wrap:wrap">
       <button id="btnSaveVersion" class="wf-btn-primary" style="font-size:.85rem" <%= readOnly ? 'disabled' : '' %>><i class="bi bi-save"></i> Salvar nova versao</button>
+      <button id="btnCommandPalette" class="wf-btn-secondary" style="padding:6px 10px"><i class="bi bi-command"></i> Comandos</button>
       <button id="btnZoomIn" class="wf-btn-secondary" style="padding:6px 10px">Zoom +</button>
       <button id="btnZoomOut" class="wf-btn-secondary" style="padding:6px 10px">Zoom -</button>
       <button id="btnFit" class="wf-btn-secondary" style="padding:6px 10px">Fit</button>
@@ -28,7 +29,9 @@
       <button id="btnRedo" class="wf-btn-secondary" style="padding:6px 10px">Redo</button>
       <button id="btnAlign" class="wf-btn-secondary" style="padding:6px 10px">Auto-align</button>
     </div>
-    <div style="font-size:.85rem;color:#5f6368">
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:.85rem;color:#5f6368">
+      <span id="modelerDirtyBadge" class="wf-modeler-dirty-badge is-clean">Sem alteracoes</span>
+      <span class="wf-modeler-shortcut-hint">Ctrl+S salvar • Ctrl+K comandos • Alt+F conectar</span>
       Processo: <strong><%= payload.process.nome %></strong>
       <% if (payload.version) { %>
         | Versao: <strong>v<%= payload.version.versao %></strong>
@@ -39,6 +42,7 @@
   <div class="wf-modeler-grid wf-modeler-grid-pro">
     <aside class="wf-toolbox-panel" id="wfToolboxPanel">
       <h3 class="font-semibold text-sm mb-2">Itens</h3>
+      <input id="toolboxSearchInput" class="wf-form-input" placeholder="Buscar item..." style="margin-bottom:10px" />
 
       <p class="wf-toolbox-group-title">Activities</p>
       <div class="wf-toolbox-list mb-2">
@@ -78,6 +82,11 @@
     <div class="wf-modeler-canvas-wrap">
       <div id="bpmnCanvas" class="wf-modeler-canvas"></div>
       <div id="flowInsertFab" class="wf-flow-insert-fab" style="display:none;">+</div>
+      <div id="flowInsertMenu" class="wf-flow-insert-menu" style="display:none;">
+        <button type="button" data-flow-insert-type="bpmn:UserTask"><i class="bi bi-person"></i> Tarefa</button>
+        <button type="button" data-flow-insert-type="bpmn:ExclusiveGateway"><i class="bi bi-sign-intersection"></i> Gateway</button>
+        <button type="button" data-flow-insert-type="bpmn:IntermediateCatchEvent"><i class="bi bi-hourglass-split"></i> Evento</button>
+      </div>
     </div>
 
     <aside class="wf-props-panel">
@@ -156,6 +165,35 @@
           <textarea id="propCondition" rows="2" class="wf-form-input" style="resize:vertical" placeholder="Ex: payload.valor > 5000"></textarea>
         </div>
 
+        <div id="gatewayDecisionSection" style="padding:12px;border:1px solid #e0e0e0;border-radius:6px;background:#fafafa;display:none">
+          <label class="wf-form-label">Pergunta da decisao</label>
+          <input id="propDecisionQuestion" class="wf-form-input" placeholder="Ex: Pedido aprovado?" />
+
+          <label class="wf-form-label" style="margin-top:10px">Campo da resposta no payload</label>
+          <input id="propDecisionAnswerField" class="wf-form-input" placeholder="Ex: __decisionAnswer" />
+
+          <label class="wf-form-label" style="margin-top:10px">Fluxo padrao do gateway (fallback)</label>
+          <select id="propDefaultFlow" class="wf-form-input">
+            <option value="">Nenhum fluxo padrao</option>
+          </select>
+
+          <p style="font-size:.78rem;color:#5f6368;margin:6px 0 0">
+            Para decisao profissional, configure as setas de saida com condicao ou mapeamento Sim/Nao.
+          </p>
+        </div>
+
+        <div id="flowDecisionSection" style="padding:12px;border:1px solid #e0e0e0;border-radius:6px;background:#fafafa;display:none">
+          <label class="wf-form-label">Resultado da decisao para esta seta</label>
+          <select id="propFlowDecisionOutcome" class="wf-form-input">
+            <option value="">Sem mapeamento explicito</option>
+            <option value="SIM">SIM</option>
+            <option value="NAO">NAO</option>
+          </select>
+          <p style="font-size:.78rem;color:#5f6368;margin:6px 0 0">
+            Use quando esta seta pertence a um gateway de decisao exclusivo.
+          </p>
+        </div>
+
         <div>
           <label class="wf-form-label">Formulario vinculado</label>
           <select id="propFormId" class="wf-form-input">
@@ -208,6 +246,13 @@
   <button type="button" data-action="add-gateway-after">Adicionar gateway</button>
   <button type="button" data-action="associate-form">Associar formulario</button>
   <button type="button" data-action="set-responsible">Definir responsavel</button>
+</div>
+
+<div id="modelerCommandPalette" class="wf-command-palette" style="display:none;">
+  <div class="wf-command-palette-box">
+    <input id="modelerCommandInput" class="wf-form-input" placeholder="Digite um comando..." autocomplete="off" />
+    <div id="modelerCommandList" class="wf-command-list"></div>
+  </div>
 </div>
 
 <script id="modelerSeed" type="application/json"><%- JSON.stringify({

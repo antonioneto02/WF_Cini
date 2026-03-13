@@ -75,6 +75,56 @@ function evaluateExpression(expression, contextData = {}) {
   }
 }
 
+function normalizeDecisionKeyword(value) {
+  return String(value || '')
+    .trim()
+    .toUpperCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+}
+
+function normalizeDecisionAnswer(value) {
+  if (typeof value === 'boolean') return value ? 'SIM' : 'NAO';
+
+  if (typeof value === 'number') {
+    if (value === 1) return 'SIM';
+    if (value === 0) return 'NAO';
+  }
+
+  const normalized = normalizeDecisionKeyword(value);
+  if (!normalized) return null;
+
+  const yesValues = new Set(['SIM', 'S', 'YES', 'Y', 'TRUE', '1', 'APROVAR', 'APROVADO', 'ACEITO', 'OK']);
+  if (yesValues.has(normalized)) return 'SIM';
+
+  const noValues = new Set(['NAO', 'N', 'NO', 'FALSE', '0', 'REJEITAR', 'REPROVAR', 'NEGAR', 'NEGADO']);
+  if (noValues.has(normalized)) return 'NAO';
+
+  return null;
+}
+
+function buildDecisionEvaluationContext(contextData, decisionAnswer) {
+  if (!decisionAnswer) return contextData;
+
+  const safeContext = contextData && typeof contextData === 'object' ? contextData : {};
+  const response = safeContext.response && typeof safeContext.response === 'object'
+    ? { ...safeContext.response }
+    : {};
+
+  response.__decisionAnswer = decisionAnswer;
+  response.decision = decisionAnswer;
+  response.decisao = decisionAnswer;
+
+  return {
+    ...safeContext,
+    response,
+    decision: decisionAnswer,
+    decisionAnswer,
+    isYes: decisionAnswer === 'SIM',
+    isNo: decisionAnswer === 'NAO',
+  };
+}
+
 function readValueByPath(source, path) {
   if (!source || typeof source !== 'object') return undefined;
   const normalizedPath = String(path || '').trim();
@@ -92,6 +142,100 @@ function readValueByPath(source, path) {
     if (!acc || typeof acc !== 'object') return undefined;
     return acc[key];
   }, source);
+}
+
+function resolveDecisionAnswerFromContext(contextData, answerField = '__decisionAnswer') {
+  const safeContext = contextData && typeof contextData === 'object' ? contextData : {};
+  const candidatePaths = Array.from(
+    new Set([
+      String(answerField || '').trim(),
+      '__decisionAnswer',
+      'decisao',
+      'decision',
+      'decisionAnswer',
+      'aprovacao',
+      'aprovado',
+      'resultado',
+    ].filter(Boolean))
+  );
+
+  const sources = [
+    safeContext.response && typeof safeContext.response === 'object' ? safeContext.response : null,
+    safeContext.payload && typeof safeContext.payload === 'object' ? safeContext.payload : null,
+  ].filter(Boolean);
+
+  for (const source of sources) {
+    for (const path of candidatePaths) {
+      const normalized = normalizeDecisionAnswer(readValueByPath(source, path));
+      if (normalized) return normalized;
+    }
+  }
+
+  return normalizeDecisionAnswer(safeContext.action);
+}
+
+function getFlowLabel(flow, properties) {
+  const saved = properties && properties.flows ? properties.flows[flow.id] || {} : {};
+  return String(saved.name || flow.name || '').trim();
+}
+
+function inferDecisionOutcomeFromFlow(flow, properties) {
+  const saved = properties && properties.flows ? properties.flows[flow.id] || {} : {};
+  const explicit = normalizeDecisionAnswer(saved.decisionOutcome);
+  if (explicit) return explicit;
+
+  const normalizedLabel = normalizeDecisionKeyword(getFlowLabel(flow, properties));
+  if (!normalizedLabel) return null;
+
+  if (/\b(SIM|YES|TRUE|APROV|ACEIT|OK)\b/.test(normalizedLabel)) return 'SIM';
+  if (/\b(NAO|NO|FALSE|REPROV|REJEIT|NEG)\b/.test(normalizedLabel)) return 'NAO';
+  return null;
+}
+
+function selectDecisionFlowByAnswer({ graph, element, answer }) {
+  if (!graph || !element || element.$type !== 'bpmn:ExclusiveGateway') return null;
+
+  const outgoingIds = graph.outgoingByElement[element.id] || [];
+  if (!outgoingIds.length) return null;
+
+  const outgoingFlows = outgoingIds
+    .map((flowId) => graph.sequenceFlowMap[flowId])
+    .filter(Boolean);
+
+  const labeled = outgoingFlows.find((flow) => inferDecisionOutcomeFromFlow(flow, graph.properties) === answer);
+  if (labeled) return labeled;
+
+  if (outgoingFlows.length === 2) {
+    return answer === 'SIM' ? outgoingFlows[0] : outgoingFlows[1];
+  }
+
+  const defaultFlowId = getDefaultFlowId(element, graph.properties);
+  if (defaultFlowId && graph.sequenceFlowMap[defaultFlowId]) {
+    return graph.sequenceFlowMap[defaultFlowId];
+  }
+
+  return null;
+}
+
+function resolveGatewayDecisionConfig(graph, element, elementDisplayName) {
+  const question = String(
+    readElementProperty(graph, element.id, 'decisionQuestion', element.name || elementDisplayName || 'Pergunta de decisao') || ''
+  ).trim() || 'Pergunta de decisao';
+
+  const answerField = String(readElementProperty(graph, element.id, 'decisionAnswerField', '__decisionAnswer') || '').trim()
+    || '__decisionAnswer';
+
+  const sla = Math.max(1, Number(readElementProperty(graph, element.id, 'sla', 24)) || 24);
+  const formId = Number(readElementProperty(graph, element.id, 'formId', 0)) || null;
+  const responsavel = String(readElementProperty(graph, element.id, 'responsible', '') || '').trim();
+
+  return {
+    question,
+    answerField,
+    sla,
+    formId,
+    responsavel,
+  };
 }
 
 function setValueByPath(target, path, value) {
@@ -235,22 +379,66 @@ async function handleOutgoingFlows({ graph, element, contextData, allowMultiple 
   const outgoingIds = graph.outgoingByElement[element.id] || [];
   if (!outgoingIds.length) return [];
 
-  if (!outgoingIds.length) return [];
+  const outgoingFlows = outgoingIds
+    .map((flowId) => graph.sequenceFlowMap[flowId])
+    .filter(Boolean);
 
-  const selected = [];
   const defaultFlowId = getDefaultFlowId(element, graph.properties);
 
-  outgoingIds.forEach((flowId) => {
-    const flow = graph.sequenceFlowMap[flowId];
-    if (!flow) return;
+  if (element.$type === 'bpmn:ExclusiveGateway') {
+    const decisionAnswerField = readElementProperty(graph, element.id, 'decisionAnswerField', '__decisionAnswer');
+    const decisionAnswer = resolveDecisionAnswerFromContext(contextData, decisionAnswerField);
 
+    if (decisionAnswer) {
+      const selectedByDecision = selectDecisionFlowByAnswer({
+        graph,
+        element,
+        answer: decisionAnswer,
+      });
+      if (selectedByDecision) return [selectedByDecision];
+    }
+
+    const evaluationContext = buildDecisionEvaluationContext(contextData, decisionAnswer);
+    const candidates = outgoingFlows.filter((flow) => flow.id !== defaultFlowId);
+    const matched = [];
+
+    candidates.forEach((flow) => {
+      const condition = getFlowCondition(flow, graph.properties);
+      if (condition) {
+        if (evaluateExpression(condition, evaluationContext)) {
+          matched.push(flow);
+        }
+        return;
+      }
+
+      const decisionOutcome = inferDecisionOutcomeFromFlow(flow, graph.properties);
+      if (!decisionOutcome) {
+        matched.push(flow);
+      }
+    });
+
+    if (matched.length) {
+      return [matched[0]];
+    }
+
+    if (defaultFlowId && graph.sequenceFlowMap[defaultFlowId]) {
+      return [graph.sequenceFlowMap[defaultFlowId]];
+    }
+
+    return [];
+  }
+
+  const selected = [];
+  const evaluationContext = contextData && typeof contextData === 'object' ? contextData : {};
+
+  outgoingFlows.forEach((flow) => {
     const condition = getFlowCondition(flow, graph.properties);
     if (!condition) {
       selected.push(flow);
       return;
     }
 
-    const ok = evaluateExpression(condition, contextData);
+    const ok = evaluateExpression(condition, evaluationContext);
     if (ok) selected.push(flow);
   });
 
@@ -540,6 +728,71 @@ async function continueFlow({
   }
 
   if (elementType === 'bpmn:ExclusiveGateway') {
+    const outgoingIds = graph.outgoingByElement[element.id] || [];
+    const decisionConfig = resolveGatewayDecisionConfig(graph, element, elementDisplayName);
+    const decisionAnswer = outgoingIds.length > 1
+      ? resolveDecisionAnswerFromContext(contextData, decisionConfig.answerField)
+      : null;
+
+    if (outgoingIds.length > 1 && !decisionAnswer) {
+      const responsavelDecisao = decisionConfig.responsavel || String(executor || '').trim() || null;
+      const taskName = `Decisao: ${decisionConfig.question}`;
+
+      const decisionTaskConfig = {
+        formId: decisionConfig.formId,
+        taskType: 'DECISION',
+        decisionGateway: {
+          gatewayId: element.id,
+          question: decisionConfig.question,
+          answerField: decisionConfig.answerField,
+          options: [
+            { value: 'SIM', label: 'Sim' },
+            { value: 'NAO', label: 'Nao' },
+          ],
+        },
+      };
+
+      const createdTaskId = await taskRepository.createTask({
+        instanciaId: instance.id,
+        processoId: instance.processo_id,
+        versaoProcessoId: instance.versao_processo_id,
+        elementId: element.id,
+        nomeEtapa: taskName,
+        responsavel: responsavelDecisao,
+        slaHoras: decisionConfig.sla,
+        formConfigJson: JSON.stringify(decisionTaskConfig),
+        status: 'MINHAS_TAREFAS',
+      });
+
+      await logHistory({
+        instanciaId: instance.id,
+        processoId: instance.processo_id,
+        versaoProcessoId: instance.versao_processo_id,
+        origemElementId: sourceElementId || null,
+        destinoElementId: element.id,
+        tipoEvento: 'TAREFA_CRIADA',
+        descricao: 'Tarefa de decisao aguardando resposta Sim ou Nao',
+        executor,
+        payloadJson: {
+          responsavel: responsavelDecisao,
+          sla_horas: decisionConfig.sla,
+          pergunta: decisionConfig.question,
+          campo_resposta: decisionConfig.answerField,
+        },
+      });
+
+      await notificationService.notifyTaskCreated({
+        responsavel: responsavelDecisao,
+        taskId: createdTaskId,
+        instanciaId: instance.id,
+        processoNome: contextData && contextData.payload ? contextData.payload.processo_codigo || null : null,
+        nomeEtapa: taskName,
+        actor: executor,
+      });
+
+      return;
+    }
+
     const outgoing = await handleOutgoingFlows({
       graph,
       element,
@@ -730,17 +983,53 @@ async function startInstance({ processoId, solicitante, payload }) {
     throw new Error('Processo sem StartEvent');
   }
 
-  // include processo identifiers in the instance payload
+  function normalizeProcessIdentifierType(value) {
+    const normalized = String(value || '').trim().toUpperCase();
+    if (!normalized) return null;
+    if (normalized === 'TEXTO') return 'TEXTO';
+    if (normalized === 'SEQUENCIAL' || normalized === 'NUMERICO' || normalized === 'NUMERO') return 'SEQUENCIAL';
+    return null;
+  }
+
+  function resolveInstanceIdentifier(processInfo, sourcePayload) {
+    const mustUseIdentifier = Boolean(processInfo && processInfo.usa_identificador);
+    if (!mustUseIdentifier) return null;
+
+    const payloadObject = sourcePayload && typeof sourcePayload === 'object' ? sourcePayload : {};
+    const rawIdentifier = payloadObject.identificador !== undefined ? payloadObject.identificador : payloadObject.identifier;
+    const identifier = String(rawIdentifier || '').trim();
+
+    if (!identifier) {
+      throw new Error('Este processo exige identificador. Informe o identificador para iniciar a solicitacao');
+    }
+
+    const identifierType = normalizeProcessIdentifierType(processInfo && processInfo.tipo_identificador);
+    if (identifierType === 'SEQUENCIAL') {
+      // allow digits with common separators (dot, comma, dash, space)
+      const allowedChars = /^[0-9.,\s\-]+$/.test(identifier);
+      const digitsOnly = /^\d+$/.test(identifier.replace(/[.,\s\-]/g, ''));
+      if (!allowedChars || !digitsOnly) {
+        throw new Error('O identificador deste processo deve ser numérico (dígitos; separadores . , - e espaços permitidos)');
+      }
+    }
+
+    return identifier;
+  }
+
   const processInfo = await processRepository.getProcessById(processoId);
+  const instanceIdentifier = resolveInstanceIdentifier(processInfo, payload);
   const fullPayload = Object.assign({}, payload || {}, {
     processo_id: processoId,
     processo_codigo: processInfo ? processInfo.codigo : null,
+    identificador: instanceIdentifier,
   });
 
   const instanceId = await instanceRepository.createInstance({
     processoId,
     versaoId: processVersion.id,
     solicitante: solicitante || 'sistema',
+    identificador: instanceIdentifier,
+    descIden: processInfo ? processInfo.desc_iden : null,
     payloadJson: JSON.stringify(fullPayload || {}),
     status: 'EM_ANDAMENTO',
     currentElementId: graph.startEvents[0].id,
@@ -782,13 +1071,7 @@ async function completeUserTask({ taskId, action, observacao, response, user }) 
   const task = await taskRepository.getTaskById(taskId);
   if (!task) throw new Error('Tarefa nao encontrada');
 
-  await taskRepository.completeTask({
-    taskId,
-    action,
-    observacao,
-    responseJson: JSON.stringify(response || {}),
-    user: user || 'sistema',
-  });
+  const safeResponse = response && typeof response === 'object' ? { ...response } : {};
 
   let formConfig = {};
   try {
@@ -797,12 +1080,41 @@ async function completeUserTask({ taskId, action, observacao, response, user }) 
     formConfig = {};
   }
 
+  const decisionGateway = formConfig && typeof formConfig.decisionGateway === 'object'
+    ? formConfig.decisionGateway
+    : null;
+
+  if (decisionGateway) {
+    const answerField = String(decisionGateway.answerField || '__decisionAnswer').trim() || '__decisionAnswer';
+    const normalizedAnswer = resolveDecisionAnswerFromContext(
+      { response: safeResponse, action },
+      answerField
+    );
+
+    if (!normalizedAnswer) {
+      throw new Error('Selecione Sim ou Nao para concluir a tarefa de decisao');
+    }
+
+    safeResponse[answerField] = normalizedAnswer;
+    safeResponse.__decisionAnswer = normalizedAnswer;
+    safeResponse.decision = normalizedAnswer;
+    safeResponse.decisao = normalizedAnswer;
+  }
+
+  await taskRepository.completeTask({
+    taskId,
+    action,
+    observacao,
+    responseJson: JSON.stringify(safeResponse),
+    user: user || 'sistema',
+  });
+
   if (formConfig.formId) {
     await formRepository.saveResponse({
       tarefaId: task.id,
       instanciaId: task.instancia_processo_id,
       formularioId: formConfig.formId,
-      respostaJson: JSON.stringify(response || {}),
+      respostaJson: JSON.stringify(safeResponse),
       respondidoPor: user || 'sistema',
     });
   }
@@ -846,7 +1158,7 @@ async function completeUserTask({ taskId, action, observacao, response, user }) 
       payload: safeJsonParse(task.payload_json, {}),
       action: action || 'aprovar',
       currentUser: user,
-      response: response || {},
+      response: safeResponse,
     },
     allowMultiple: true,
   });
@@ -862,7 +1174,7 @@ async function completeUserTask({ taskId, action, observacao, response, user }) 
         payload: safeJsonParse(task.payload_json, {}),
         action: action || 'aprovar',
         currentUser: user,
-        response: response || {},
+        response: safeResponse,
       },
       executor: user,
       visited: new Set(),

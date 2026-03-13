@@ -154,7 +154,6 @@
       try {
         WorkflowUI.setLoader(true);
         const base64 = await toBase64(file);
-
         const response = await fetch(`/api/ecm/processos/${processId}/arquivos`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },

@@ -46,13 +46,10 @@ document.addEventListener('DOMContentLoaded', function () {
   try {
     const wfApp = document.querySelector('.wf-app');
     const sidebar = document.querySelector('.wf-sidebar');
-
-    // ensure collapsed-by-default class is present for hover behavior
     if (wfApp && !wfApp.classList.contains('wf-sidebar-collapsed')) {
       wfApp.classList.add('wf-sidebar-collapsed');
     }
 
-    // keyboard accessibility: expand while focus inside sidebar
     if (sidebar && wfApp) {
       sidebar.addEventListener('focusin', function () {
         wfApp.classList.add('wf-sidebar-hovered');
@@ -62,7 +59,6 @@ document.addEventListener('DOMContentLoaded', function () {
       });
     }
 
-    // User dropdown (show logout only after clicking the user)
     const userToggle = document.getElementById('wfUserToggle');
     const userDropdown = document.getElementById('wfUserDropdown');
     function closeUserDropdown() { if (userDropdown) { userDropdown.style.display = 'none'; if (userToggle) userToggle.setAttribute('aria-expanded', 'false'); } }
@@ -73,13 +69,11 @@ document.addEventListener('DOMContentLoaded', function () {
       document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeUserDropdown(); });
     }
 
-    // Notifications dropdown
     const notifToggle = document.getElementById('wfNotifToggle');
     const notifDropdown = document.getElementById('wfNotifDropdown');
     const notifBadge = document.getElementById('wfNotifBadge');
     const notifList = document.getElementById('wfNotifList');
     const markAllBtn = document.getElementById('wfNotifMarkAllBtn');
-
     function closeNotifDropdown() {
       if (notifDropdown) notifDropdown.style.display = 'none';
       if (notifToggle) notifToggle.setAttribute('aria-expanded', 'false');
