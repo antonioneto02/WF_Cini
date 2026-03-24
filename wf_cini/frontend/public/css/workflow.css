@@ -1300,6 +1300,12 @@
   color: #5f6368;
 }
 
+.wf-notif-date {
+  font-size: 11px;
+  color: #9aa0a6;
+  margin-top: 3px;
+}
+
 .wf-notif-main {
   flex: 1;
   min-width: 0;

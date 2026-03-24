@@ -20,7 +20,7 @@ async function hasTableColumn(tableName, columnName) {
 }
 
 function normalizeIdentifier(value) {
-  return String(value || '').trim().toUpperCase();
+  return String(value || '').trim().toLowerCase();
 }
 
 function normalizeIdentifierList(list) {
@@ -37,13 +37,13 @@ function buildUserVisibilityClause(userKeys, params) {
   const parts = userKeys.map((key, index) => {
     const paramName = `userKey${index}`;
     params[paramName] = key;
-    return `UPPER(LTRIM(RTRIM(ISNULL(t.responsavel, '')))) = :${paramName}`;
+    return `LOWER(LTRIM(RTRIM(ISNULL(t.responsavel, '')))) = :${paramName}`;
   });
 
   return `
        AND (
-         UPPER(LTRIM(RTRIM(ISNULL(t.responsavel, '')))) = ''
-         OR UPPER(LTRIM(RTRIM(ISNULL(t.responsavel, '')))) = 'ANY'
+         LOWER(LTRIM(RTRIM(ISNULL(t.responsavel, '')))) = ''
+         OR LOWER(LTRIM(RTRIM(ISNULL(t.responsavel, '')))) = 'any'
           OR ${parts.join('\n          OR ')}
        )`;
 }
@@ -58,16 +58,18 @@ async function createTask({
   slaHoras,
   formConfigJson,
   status = 'MINHAS_TAREFAS',
+  criadoPor = null,
 }) {
   const normalizedResponsavel = normalizeIdentifier(responsavel) || null;
+  const normalizedCriadoPor = criadoPor ? String(criadoPor).trim().toLowerCase() : null;
 
   const result = await db.query(
     `INSERT INTO tarefas
       (instancia_processo_id, processo_id, versao_processo_id, elemento_id, nome_etapa,
-       responsavel, sla_horas, configuracao_formulario_json, status, dt_criacao, dt_atualizacao)
+       responsavel, sla_horas, configuracao_formulario_json, status, criado_por, dt_criacao, dt_atualizacao)
      VALUES
       (:instanciaId, :processoId, :versaoProcessoId, :elementId, :nomeEtapa,
-       :responsavel, :slaHoras, :formConfigJson, :status, NOW(), NOW())`,
+       :responsavel, :slaHoras, :formConfigJson, :status, :criadoPor, NOW(), NOW())`,
     {
       instanciaId,
       processoId,
@@ -78,6 +80,7 @@ async function createTask({
       slaHoras,
       formConfigJson,
       status,
+      criadoPor: normalizedCriadoPor,
     }
   );
 
@@ -100,7 +103,7 @@ async function getTaskById(taskId) {
   const rows = await db.query(
     `SELECT t.id, t.instancia_processo_id, t.processo_id, t.versao_processo_id,
             t.elemento_id AS element_id, t.nome_etapa,
-            CASE WHEN UPPER(LTRIM(RTRIM(ISNULL(t.responsavel, '')))) = 'ANY' THEN '' ELSE ISNULL(t.responsavel, '') END AS responsavel,
+            CASE WHEN LOWER(LTRIM(RTRIM(ISNULL(t.responsavel, '')))) = 'any' THEN '' ELSE ISNULL(t.responsavel, '') END AS responsavel,
             t.sla_horas,
             t.configuracao_formulario_json AS form_config_json, t.resposta_json,
             t.acao_final, t.observacao_final, t.status, t.iniciado_em AS started_at,
@@ -181,7 +184,7 @@ async function listKanbanTasks({
        AND (:identificador IS NULL OR i.identificador LIKE :identificadorLike)
        AND (:startDate IS NULL OR t.dt_criacao >= :startDate)
        AND (:endDate IS NULL OR t.dt_criacao < DATEADD(day, 1, :endDate))
-       AND (:responsavel IS NULL OR UPPER(LTRIM(RTRIM(ISNULL(t.responsavel, '')))) = :responsavel)
+       AND (:responsavel IS NULL OR LOWER(LTRIM(RTRIM(ISNULL(t.responsavel, '')))) = :responsavel)
        ${userVisibilityClause}
        AND (
          t.nome_etapa LIKE :likeSearch
@@ -201,7 +204,7 @@ async function listKanbanTasks({
 
   const rows = await db.query(
       `SELECT t.id, t.nome_etapa, t.status,
-        CASE WHEN UPPER(LTRIM(RTRIM(ISNULL(t.responsavel, '')))) = 'ANY' THEN '' ELSE ISNULL(t.responsavel, '') END AS responsavel,
+        CASE WHEN LOWER(LTRIM(RTRIM(ISNULL(t.responsavel, '')))) = 'any' THEN '' ELSE ISNULL(t.responsavel, '') END AS responsavel,
         t.sla_horas,
         t.elemento_id AS element_id, t.versao_processo_id,
             t.dt_criacao AS created_at, t.iniciado_em AS started_at, t.concluido_em AS completed_at, t.instancia_processo_id,
@@ -242,7 +245,9 @@ async function completeTask({ taskId, action, observacao, responseJson, user }) 
   await db.query(
     `UPDATE tarefas
      SET status = 'CONCLUIDA', acao_final = :action, observacao_final = :observacao,
-         resposta_json = :responseJson, concluido_por = :user, concluido_em = NOW(), dt_atualizacao = NOW()
+         resposta_json = :responseJson, concluido_por = :user, concluido_em = NOW(),
+         iniciado_em = CASE WHEN iniciado_em IS NULL THEN NOW() ELSE iniciado_em END,
+         atualizado_por = :user, dt_atualizacao = NOW()
      WHERE id = :taskId`,
     { taskId, action, observacao, responseJson, user }
   );
@@ -275,7 +280,7 @@ async function findOpenTasksByInstance(instanciaId) {
 async function listTasksByInstance(instanciaId) {
   return db.query(
     `SELECT t.id, t.elemento_id AS element_id, t.nome_etapa,
-            CASE WHEN UPPER(LTRIM(RTRIM(ISNULL(t.responsavel, '')))) = 'ANY' THEN '' ELSE ISNULL(t.responsavel, '') END AS responsavel,
+            CASE WHEN LOWER(LTRIM(RTRIM(ISNULL(t.responsavel, '')))) = 'any' THEN '' ELSE ISNULL(t.responsavel, '') END AS responsavel,
             t.sla_horas,
             t.status, t.acao_final, t.observacao_final,
             t.iniciado_em AS started_at, t.concluido_em AS completed_at,

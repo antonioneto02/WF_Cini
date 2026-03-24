@@ -5,7 +5,7 @@ const protheusUserRepository = require('../repositories/protheusUserRepository')
 const workflowLabelService = require('./workflowLabelService');
 
 function normalizeIdentifier(value) {
-  return String(value || '').trim().toUpperCase();
+  return String(value || '').trim().toLowerCase();
 }
 
 async function resolveUserTaskKeys(user) {
@@ -115,7 +115,7 @@ async function canUserHandleTask(taskId, user) {
   if (!allowedKeys.length) return false;
 
   const responsible = normalizeIdentifier(task.responsavel || '');
-  if (!responsible || responsible === 'ANY') return true;
+  if (!responsible || responsible === 'any') return true;
   return allowedKeys.includes(responsible);
 }
 

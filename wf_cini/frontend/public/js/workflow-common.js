@@ -126,10 +126,16 @@ document.addEventListener('DOMContentLoaded', function () {
       notifList.innerHTML = data.map(function (item) {
         const isUnread = String(item.status || '').toUpperCase() === 'UNREAD';
         const targetUrl = parseScopeUrl(item);
+        const createdAt = item.created_at ? new Date(item.created_at).toLocaleString('pt-BR', {
+          timeZone: 'America/Sao_Paulo',
+          day: '2-digit', month: '2-digit', year: 'numeric',
+          hour: '2-digit', minute: '2-digit',
+        }) : '';
         return `<div class="wf-notif-item ${isUnread ? 'unread' : ''}" data-id="${item.id}" data-url="${targetUrl || ''}">
           <div class="wf-notif-main">
             <div class="wf-notif-title">${item.titulo || '-'}</div>
             <div class="wf-notif-msg">${item.mensagem || '-'}</div>
+            ${createdAt ? `<div class="wf-notif-date">${createdAt}</div>` : ''}
           </div>
           <div class="wf-notif-actions">
             ${isUnread ? `<button type="button" class="wf-notif-action-read" data-id="${item.id}">Marcar lida</button>` : ''}

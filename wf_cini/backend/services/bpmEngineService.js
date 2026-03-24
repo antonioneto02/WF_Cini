@@ -219,7 +219,7 @@ function selectDecisionFlowByAnswer({ graph, element, answer }) {
 
 function resolveGatewayDecisionConfig(graph, element, elementDisplayName) {
   const question = String(
-    readElementProperty(graph, element.id, 'decisionQuestion', element.name || elementDisplayName || 'Pergunta de decisao') || ''
+    element.name || readElementProperty(graph, element.id, 'decisionQuestion', elementDisplayName || 'Pergunta de decisao') || ''
   ).trim() || 'Pergunta de decisao';
 
   const answerField = String(readElementProperty(graph, element.id, 'decisionAnswerField', '__decisionAnswer') || '').trim()
@@ -572,6 +572,7 @@ async function continueFlow({
       slaHoras: sla,
       formConfigJson: JSON.stringify(taskConfig),
       status: 'MINHAS_TAREFAS',
+      criadoPor: executor || null,
     });
 
     await logHistory({
@@ -768,6 +769,7 @@ async function continueFlow({
         slaHoras: decisionConfig.sla,
         formConfigJson: JSON.stringify(decisionTaskConfig),
         status: 'MINHAS_TAREFAS',
+        criadoPor: executor || null,
       });
 
       await logHistory({
