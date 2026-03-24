@@ -880,6 +880,15 @@ textarea {
 }
 
 /* ========================================
+   Error page styles
+   ======================================== */
+.error-icon { font-size: 56px; margin-bottom: 12px; }
+.card .error-icon { display:block; }
+.card .text-muted { color: var(--text-light); }
+.card { padding: 0; }
+.card .card-body { padding: 32px; }
+
+/* ========================================
    Responsivo
    ======================================== */
 

@@ -9,9 +9,9 @@ function requireDevUser(req, res, next) {
       return res.status(403).json({ ok: false, message: 'Area dev restrita ao usuario 000460' });
     }
 
-    return res.status(403).render('erpShell', {
+    return res.status(403).render('System/forbidden', {
       pageTitle: 'Acesso negado',
-      pageDescription: 'Area dev restrita ao usuario 000460',
+      pageDescription: 'Área dev restrita ao usuário 000460',
       user: res.locals.user,
     });
   }

@@ -60,7 +60,7 @@ async function detalhes(req, res, next) {
     const currentUser = getCurrentUser(req);
     const canView = await accessService.canUser(processoId, currentUser, 'view');
     if (!canView) {
-      return res.status(403).render('erpShell', {
+      return res.status(403).render('System/forbidden', {
         pageTitle: 'Acesso negado',
         pageDescription: 'Voce nao possui permissao para visualizar este processo',
         user: res.locals.user,
@@ -89,7 +89,7 @@ async function editar(req, res, next) {
     const currentUser = getCurrentUser(req);
     const canEdit = await accessService.canUser(processoId, currentUser, 'edit');
     if (!canEdit) {
-      return res.status(403).render('erpShell', {
+      return res.status(403).render('System/forbidden', {
         pageTitle: 'Acesso negado',
         pageDescription: 'Voce nao possui permissao para editar este processo',
         user: res.locals.user,
@@ -113,7 +113,7 @@ async function historico(req, res, next) {
     const currentUser = getCurrentUser(req);
     const canView = await accessService.canUser(processoId, currentUser, 'view');
     if (!canView) {
-      return res.status(403).render('erpShell', {
+      return res.status(403).render('System/forbidden', {
         pageTitle: 'Acesso negado',
         pageDescription: 'Voce nao possui permissao para visualizar este historico',
         user: res.locals.user,
@@ -137,7 +137,7 @@ async function instancias(req, res, next) {
     const currentUser = getCurrentUser(req);
     const canView = await accessService.canUser(processoId, currentUser, 'view');
     if (!canView) {
-      return res.status(403).render('erpShell', {
+      return res.status(403).render('System/forbidden', {
         pageTitle: 'Acesso negado',
         pageDescription: 'Voce nao possui permissao para visualizar as instancias deste processo',
         user: res.locals.user,
@@ -178,7 +178,7 @@ async function iniciar(req, res, next) {
     const currentUser = getCurrentUser(req);
     const canExecute = await accessService.canUser(processoId, currentUser, 'execute');
     if (!canExecute) {
-      return res.status(403).render('erpShell', {
+      return res.status(403).render('System/forbidden', {
         pageTitle: 'Acesso negado',
         pageDescription: 'Voce nao possui permissao para iniciar este processo',
         user: res.locals.user,
@@ -205,7 +205,7 @@ async function modelar(req, res, next) {
     const canView = await accessService.canUser(processoId, currentUser, 'view');
 
     if (!canView) {
-      return res.status(403).render('erpShell', {
+      return res.status(403).render('System/forbidden', {
         pageTitle: 'Acesso negado',
         pageDescription: 'Voce nao possui permissao para abrir o modelador deste processo',
         user: res.locals.user,

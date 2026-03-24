@@ -1,131 +1,16 @@
 (function () {
   const form = document.getElementById('startProcessForm');
-  const formSelect = document.getElementById('startFormSelect');
-  const formRoot = document.getElementById('startDynamicFormRoot');
   const identifierInput = document.getElementById('startIdentifierInput');
   const seedEl = document.getElementById('startProcessSeed');
-  const seed = seedEl ? JSON.parse(seedEl.textContent) : { forms: [], identifier: { required: false, type: null } };
+  const seed = seedEl ? JSON.parse(seedEl.textContent) : { identifier: { required: false, type: null } };
 
-  if (!form || !formSelect || !formRoot) return;
-
-  function parseSchema(raw) {
-    if (!raw) return { fields: [] };
-    if (typeof raw === 'object') return raw;
-    try {
-      return JSON.parse(raw);
-    } catch (_) {
-      return { fields: [] };
-    }
-  }
-
-  function createField(field) {
-    const wrapper = document.createElement('div');
-    wrapper.className = 'grid gap-1';
-
-    const label = document.createElement('label');
-    label.className = 'text-sm font-semibold';
-    label.textContent = field.label || field.name || 'Campo';
-    wrapper.appendChild(label);
-
-    let input;
-    if (field.type === 'textarea') {
-      input = document.createElement('textarea');
-      input.rows = 3;
-    } else if (field.type === 'select') {
-      input = document.createElement('select');
-      (field.options || []).forEach(function (opt) {
-        const option = document.createElement('option');
-        option.value = opt.value;
-        option.textContent = opt.label;
-        input.appendChild(option);
-      });
-    } else if (field.type === 'checkbox') {
-      input = document.createElement('input');
-      input.type = 'checkbox';
-      if (field.checkedValue !== undefined) input.dataset.checkedValue = String(field.checkedValue);
-      if (field.uncheckedValue !== undefined) input.dataset.uncheckedValue = String(field.uncheckedValue);
-    } else if (field.type === 'number') {
-      input = document.createElement('input');
-      input.type = 'number';
-    } else if (field.type === 'date') {
-      input = document.createElement('input');
-      input.type = 'date';
-    } else if (field.type === 'upload') {
-      input = document.createElement('input');
-      input.type = 'file';
-    } else {
-      input = document.createElement('input');
-      input.type = 'text';
-    }
-
-    input.name = field.name || '';
-    if (field.type === 'checkbox') {
-      input.className = 'h-4 w-4 rounded border border-slate-300 justify-self-start mt-1';
-    } else {
-      input.className = 'w-full px-3 py-2 rounded-xl border border-slate-300';
-    }
-    if (field.required) input.required = true;
-    const maxLength = Number(field.maxLength || field.size);
-    if ((input.type === 'text' || input.tagName === 'TEXTAREA') && Number.isFinite(maxLength) && maxLength > 0) {
-      input.maxLength = maxLength;
-    }
-    wrapper.appendChild(input);
-    return wrapper;
-  }
-
-  function renderFormBySelection() {
-    const selectedId = Number(formSelect.value || 0);
-    const selected = (seed.forms || []).find(function (f) {
-      return Number(f.id) === selectedId;
-    });
-
-    formRoot.innerHTML = '';
-    if (!selected) return;
-
-    const schema = parseSchema(selected.schema_json);
-    const fields = Array.isArray(schema.fields) ? schema.fields : [];
-
-    if (!fields.length) {
-      const empty = document.createElement('p');
-      empty.className = 'text-sm text-slate-500';
-      empty.textContent = 'Formulario selecionado nao possui campos.';
-      formRoot.appendChild(empty);
-      return;
-    }
-
-    fields.forEach(function (field) {
-      formRoot.appendChild(createField(field));
-    });
-
-    // no identifier-field suggestions on start page
-  }
-
-  function collectDynamicPayload() {
-    const payload = {};
-    formRoot.querySelectorAll('[name]').forEach(function (input) {
-      if (!input.name) return;
-      if (input.type === 'checkbox') {
-        const trueValue = input.dataset.checkedValue;
-        const falseValue = input.dataset.uncheckedValue;
-        if (trueValue !== undefined || falseValue !== undefined) {
-          payload[input.name] = input.checked ? (trueValue !== undefined ? trueValue : true) : (falseValue !== undefined ? falseValue : false);
-        } else {
-          payload[input.name] = Boolean(input.checked);
-        }
-      }
-      else if (input.type === 'file') payload[input.name] = input.files && input.files[0] ? input.files[0].name : null;
-      else payload[input.name] = input.value;
-    });
-    return payload;
-  }
-
-  formSelect.addEventListener('change', renderFormBySelection);
+  if (!form) return;
 
   form.addEventListener('submit', async function (event) {
     event.preventDefault();
 
     const processId = Number(form.dataset.processId);
-    const payload = collectDynamicPayload();
+    const payload = {};
 
     if (seed.identifier && seed.identifier.required) {
       const identifierValue = String((identifierInput && identifierInput.value) || '').trim();
@@ -136,10 +21,8 @@
       }
 
       if (String(seed.identifier.type || '').toUpperCase() === 'SEQUENCIAL') {
-        const val = identifierValue;
-        // allow digits with common separators (dot, comma, dash, space)
-        const allowedChars = /^[0-9.,\s\-]+$/.test(val);
-        const digitsOnly = /^\d+$/.test(val.replace(/[.,\s\-]/g, ''));
+        const allowedChars = /^[0-9.,\s\-]+$/.test(identifierValue);
+        const digitsOnly = /^\d+$/.test(identifierValue.replace(/[.,\s\-]/g, ''));
         if (!allowedChars || !digitsOnly) {
           WorkflowUI.showToast('O identificador deve conter apenas números (dígitos e separadores . , - são permitidos)', 'warning');
           if (identifierInput) identifierInput.focus();
@@ -148,18 +31,6 @@
       }
 
       payload.identificador = identifierValue;
-      // identifier value sent as payload.identificador only
-    }
-
-    const rawExtra = (form.extraPayload.value || '').trim();
-    if (rawExtra) {
-      try {
-        const parsed = JSON.parse(rawExtra);
-        Object.assign(payload, parsed);
-      } catch (_) {
-        WorkflowUI.showToast('Payload complementar em JSON invalido', 'warning');
-        return;
-      }
     }
 
     try {
@@ -183,22 +54,4 @@
       WorkflowUI.setLoader(false);
     }
   });
-
-  if ((seed.forms || []).length > 0) {
-    formSelect.value = String(seed.forms[0].id);
-    renderFormBySelection();
-  }
-
-  // sync identifier input -> selected form field value (live)
-  function setFormFieldValue(name, value) {
-    if (!name) return;
-    const el = formRoot.querySelector('[name="' + name + '"]');
-    if (!el) return;
-    try {
-      if (el.type === 'checkbox') el.checked = Boolean(value);
-      else el.value = value;
-    } catch (_) {}
-  }
-
-  // no live-sync logic on start page
 })();

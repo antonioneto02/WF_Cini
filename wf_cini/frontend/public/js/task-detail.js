@@ -100,20 +100,24 @@
 
     const yesItem = document.createElement('label');
     yesItem.className = 'inline-flex items-center gap-2';
+    yesItem.style.cursor = 'pointer';
     const yesInput = document.createElement('input');
     yesInput.type = 'radio';
     yesInput.name = answerField;
     yesInput.value = 'SIM';
     yesInput.required = true;
+    yesInput.style.cursor = 'pointer';
     yesItem.appendChild(yesInput);
     yesItem.appendChild(document.createTextNode(yesLabel));
 
     const noItem = document.createElement('label');
     noItem.className = 'inline-flex items-center gap-2';
+    noItem.style.cursor = 'pointer';
     const noInput = document.createElement('input');
     noInput.type = 'radio';
     noInput.name = answerField;
     noInput.value = 'NAO';
+    noInput.style.cursor = 'pointer';
     noItem.appendChild(noInput);
     noItem.appendChild(document.createTextNode(noLabel));
 
@@ -350,10 +354,12 @@
       (field.options || []).forEach(function (opt) {
         const item = document.createElement('label');
         item.className = 'inline-flex items-center gap-2';
+        item.style.cursor = 'pointer';
         const radio = document.createElement('input');
         radio.type = 'radio';
         radio.name = field.name;
         radio.value = opt.value;
+        radio.style.cursor = 'pointer';
         item.appendChild(radio);
         item.appendChild(document.createTextNode(opt.label));
         input.appendChild(item);

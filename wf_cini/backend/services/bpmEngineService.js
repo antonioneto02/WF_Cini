@@ -730,8 +730,14 @@ async function continueFlow({
   if (elementType === 'bpmn:ExclusiveGateway') {
     const outgoingIds = graph.outgoingByElement[element.id] || [];
     const decisionConfig = resolveGatewayDecisionConfig(graph, element, elementDisplayName);
+    // Resolve apenas de response/payload — nunca de contextData.action para nao confundir
+    // a acao de conclusao de uma tarefa comum (ex: 'aprovar') com a resposta do decisor.
+    const decisionContextForGateway = {
+      response: contextData && typeof contextData.response === 'object' ? contextData.response : {},
+      payload: contextData && typeof contextData.payload === 'object' ? contextData.payload : {},
+    };
     const decisionAnswer = outgoingIds.length > 1
-      ? resolveDecisionAnswerFromContext(contextData, decisionConfig.answerField)
+      ? resolveDecisionAnswerFromContext(decisionContextForGateway, decisionConfig.answerField)
       : null;
 
     if (outgoingIds.length > 1 && !decisionAnswer) {

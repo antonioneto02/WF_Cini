@@ -47,7 +47,7 @@ async function detalhes(req, res, next) {
     const currentUser = getCurrentUser(req);
     const canHandle = await taskService.canUserHandleTask(taskId, currentUser);
     if (!canHandle) {
-      return res.status(403).render('erpShell', {
+      return res.status(403).render('System/forbidden', {
         pageTitle: 'Acesso negado',
         pageDescription: 'Voce nao possui permissao para abrir esta tarefa',
         user: res.locals.user,
