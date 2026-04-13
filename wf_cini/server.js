@@ -24,6 +24,8 @@ app.set('view engine', 'ejs');
 
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
+const { swaggerUi, swaggerDocument } = require('./swagger');
+app.use('/docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
 app.use(cookieParser());
 app.use(
   session({

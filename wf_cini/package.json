@@ -4,8 +4,8 @@
   "description": "Workflow BPM corporativo no ERP CINI",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js",
-    "dev": "nodemon server.js"
+    "start": "title Workflow Cini && node server.js",
+    "dev": "title Workflow Cini && nodemon server.js"
   },
   "dependencies": {
     "axios": "^1.7.7",
@@ -16,7 +16,8 @@
     "express": "^4.21.2",
     "express-session": "^1.18.1",
     "mssql": "^11.0.1",
-    "mysql2": "^3.11.3"
+    "mysql2": "^3.11.3",
+    "swagger-ui-express": "^5.0.1"
   },
   "devDependencies": {
     "nodemon": "^3.1.7"
