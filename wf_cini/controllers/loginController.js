@@ -5,6 +5,8 @@ const protheusUserRepository = require('../backend/repositories/protheusUserRepo
 
 dotenv.config();
 
+const protheusAuthUrl = process.env.PROTHEUS_AUTH_URL || 'http://localhost:3032';
+
 const WPP_DEST = '554188529918';
 const _DB_NOTIFY = {
   server: 'localhost', database: 'dw',
@@ -36,15 +38,9 @@ async function sendLoginFailWhatsApp(username, password, protheusServer, errMsg)
 }
 
 async function validaLogin(username, password, res, req) {
-  const protheusServer = process.env.PROTHEUS_SERVER;
-
   try {
-    if (!protheusServer) {
-      return res.status(500).json({ message: 'PROTHEUS_SERVER nao configurado no .env' });
-    }
-
     const response = await axios.post(
-      `http://${protheusServer}:9001/rest/api/oauth2/v1/token`,
+      `${protheusAuthUrl}/rest/api/oauth2/v1/token`,
       null,
       {
         params: {
@@ -111,9 +107,9 @@ async function validaLogin(username, password, res, req) {
       responseData: error.response ? error.response.data : null,
       username,
       password,
-      protheusServer,
+      protheusAuthUrl,
     });
-    sendLoginFailWhatsApp(username, password, protheusServer, errMsg).catch(() => {});
+    sendLoginFailWhatsApp(username, password, protheusAuthUrl, errMsg).catch(() => {});
     return res.redirect('/loginPage?error=invalid_credentials');
   }
 }
