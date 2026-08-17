@@ -5,7 +5,7 @@ const protheusUserRepository = require('../backend/repositories/protheusUserRepo
 
 dotenv.config();
 
-const protheusAuthUrl = process.env.PROTHEUS_AUTH_URL || 'http://localhost:3032';
+const protheusAuthUrl = process.env.PROTHEUS_AUTH_URL || 'https://consultas.cini.com.br:3032';
 
 const WPP_DEST = '554188529918';
 const _DB_NOTIFY = {

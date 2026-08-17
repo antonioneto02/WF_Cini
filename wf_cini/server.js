@@ -1,4 +1,6 @@
 const path = require('path');
+const fs = require('fs');
+const https = require('https');
 const express = require('express');
 const session = require('express-session');
 const cookieParser = require('cookie-parser');
@@ -212,6 +214,12 @@ app.use((req, res) => {
   return res.redirect(DEFAULT_AUTH_REDIRECT);
 });
 
-app.listen(PORT, () => {
-  console.log(`ERP Login Vazio rodando em http://localhost:${PORT}`);
+const CERT_DIR = 'C:\\Projetos\\Certificados';
+const sslOptions = {
+  key: fs.readFileSync(path.join(CERT_DIR, 'cini.key')),
+  cert: fs.readFileSync(path.join(CERT_DIR, 'cini.crt')),
+};
+
+https.createServer(sslOptions, app).listen(PORT, () => {
+  console.log(`ERP Login Vazio rodando em https://localhost:${PORT}`);
 });
