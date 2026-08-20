@@ -5,7 +5,9 @@
   "main": "server.js",
   "scripts": {
     "start": "title Workflow Cini && node server.js",
-    "dev": "title Workflow Cini && nodemon server.js"
+    "dev": "title Workflow Cini && nodemon server.js",
+    "test:unit": "node --test tests/unit/*.test.js",
+    "test": "npm run test:unit"
   },
   "dependencies": {
     "axios": "^1.7.7",
@@ -20,6 +22,8 @@
     "swagger-ui-express": "^5.0.1"
   },
   "devDependencies": {
+    "eslint": "^10.8.1",
+    "eslint-plugin-security": "^4.0.1",
     "nodemon": "^3.1.7"
   }
 }

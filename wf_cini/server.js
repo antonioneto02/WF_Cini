@@ -209,12 +209,16 @@ registerBpmModule(app, {
   ensureAuth,
 });
 
+app.get('/health', (_req, res) => {
+  res.json({ status: 'ok', service: 'wf-cini' });
+});
+
 app.use((req, res) => {
   if (!isAuthenticated(req)) return res.redirect('/loginPage');
   return res.redirect(DEFAULT_AUTH_REDIRECT);
 });
 
-const CERT_DIR = 'C:\\Projetos\\Certificados';
+const CERT_DIR = process.env.CERT_DIR || 'C:\\Projetos\\Certificados';
 const sslOptions = {
   key: fs.readFileSync(path.join(CERT_DIR, 'cini.key')),
   cert: fs.readFileSync(path.join(CERT_DIR, 'cini.crt')),

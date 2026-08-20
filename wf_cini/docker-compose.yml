@@ -1,0 +1,16 @@
+services:
+  wf-cini:
+    image: wf-cini:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: wf-cini
+    restart: unless-stopped
+    ports:
+      - "3008:3008"
+    env_file:
+      - .env
+    environment:
+      CERT_DIR: C:/certs
+    volumes:
+      - C:/Projetos/Certificados:C:/certs:ro
