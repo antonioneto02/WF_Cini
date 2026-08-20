@@ -205,12 +205,12 @@ app.get('/db-status', ensureAuth, async (req, res) => {
   return res.json({ erp, dw, protheus });
 });
 
-registerBpmModule(app, {
-  ensureAuth,
-});
-
 app.get('/health', (_req, res) => {
   res.json({ status: 'ok', service: 'wf-cini' });
+});
+
+registerBpmModule(app, {
+  ensureAuth,
 });
 
 app.use((req, res) => {
