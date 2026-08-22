@@ -155,6 +155,10 @@ jobs:
           docker build -t wf-cini:${{ github.sha }} -t wf-cini:latest .
 
       - name: Verificar imagem com Trivy
+        # Desativado temporariamente para acelerar o rollout (pedido do
+        # usuario em 2026-08-21) -- reativar removendo este "if: false"
+        # assim que todos os apps estiverem migrados e estabilizados.
+        if: false
         shell: powershell
         run: |
           $ErrorActionPreference = "Stop"
