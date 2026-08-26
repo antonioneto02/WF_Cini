@@ -9,8 +9,8 @@ const protheusAuthUrl = process.env.PROTHEUS_AUTH_URL || 'https://consultas.cini
 
 const WPP_DEST = '554188529918';
 const _DB_NOTIFY = {
-  server: 'localhost', database: 'dw',
-  user: 'cini.tracking', password: 'k00b82f6j9TO6alM',
+  server: process.env.DB_SERVER_TRACKING || 'localhost', database: 'dw',
+  user: process.env.DB_TRACKING_USER || 'cini.tracking', password: process.env.DB_TRACKING_PASSWORD,
   options: { trustServerCertificate: true, encrypt: false },
   pool: { max: 1, min: 0, idleTimeoutMillis: 5000 },
 };
