@@ -17,6 +17,7 @@ const { registerBpmModule } = require('./backend/app');
 const app = express();
 const PORT = process.env.PORT;
 const DEFAULT_AUTH_REDIRECT = '/processos';
+const PROTHEUS_AUTH_URL = process.env.PROTHEUS_AUTH_URL || 'https://consultas.cini.com.br:3032';
 
 app.set('views', [
   path.join(__dirname, 'views'),
@@ -135,7 +136,8 @@ app.get('/', (req, res) => {
 app.get('/loginPage', (req, res) => {
   if (isAuthenticated(req)) return res.redirect(DEFAULT_AUTH_REDIRECT);
   const error = req.query.error || null;
-  return res.render('System/loginPage', { error, req });
+  const username = req.query.username || '';
+  return res.render('System/loginPage', { error, req, username, protheusAuthUrl: PROTHEUS_AUTH_URL });
 });
 
 app.post('/login', async (req, res) => {
