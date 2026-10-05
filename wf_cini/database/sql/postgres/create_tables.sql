@@ -1,0 +1,364 @@
+CREATE TABLE IF NOT EXISTS "AUTOMACOES_CATALOGO" (
+  "id" BIGSERIAL,
+  "nome" VARCHAR(180) NOT NULL,
+  "descricao" TEXT NULL,
+  "url_endpoint" VARCHAR(1000) NOT NULL,
+  "metodo_http" VARCHAR(10) NOT NULL DEFAULT 'POST',
+  "tipo_autenticacao" VARCHAR(20) NOT NULL DEFAULT 'NONE',
+  "valor_autenticacao" VARCHAR(800) NULL,
+  "tempo_limite_ms" INT NOT NULL DEFAULT 8000,
+  "tentativas_reenvio" INT NOT NULL DEFAULT 0,
+  "ativo" BOOLEAN NOT NULL DEFAULT TRUE,
+  "criado_por" VARCHAR(120) NULL,
+  "atualizado_por" VARCHAR(120) NULL,
+  "dt_criacao" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "dt_atualizacao" TIMESTAMP NULL,
+  PRIMARY KEY ("id")
+);
+
+CREATE TABLE IF NOT EXISTS "PROCESSOS" (
+  "id" BIGSERIAL,
+  "nome" VARCHAR(180) NOT NULL,
+  "descricao" TEXT NULL,
+  "status" VARCHAR(30) NOT NULL DEFAULT 'ATIVO',
+  "criado_por" VARCHAR(120) NULL,
+  "atualizado_por" VARCHAR(120) NULL,
+  "dt_criacao" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "dt_atualizacao" TIMESTAMP NULL,
+  "usa_identificador" BOOLEAN NOT NULL DEFAULT FALSE,
+  "tipo_identificador" VARCHAR(20) NULL,
+  "desc_iden" VARCHAR(180) NULL,
+  PRIMARY KEY ("id")
+);
+
+CREATE TABLE IF NOT EXISTS "VERSOES_PROCESSO" (
+  "id" BIGSERIAL,
+  "processo_id" BIGINT NOT NULL,
+  "versao" INT NOT NULL,
+  "status" VARCHAR(30) NOT NULL DEFAULT 'RASCUNHO',
+  "xml_bpmn" TEXT NOT NULL,
+  "propriedades_json" TEXT NULL,
+  "observacao_publicacao" VARCHAR(255) NULL,
+  "publicado_em" TIMESTAMP NULL,
+  "criado_por" VARCHAR(120) NULL,
+  "atualizado_por" VARCHAR(120) NULL,
+  "publicado_por" VARCHAR(120) NULL,
+  "dt_criacao" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "dt_atualizacao" TIMESTAMP NULL,
+  PRIMARY KEY ("id")
+);
+
+CREATE TABLE IF NOT EXISTS "INSTANCIAS_PROCESSO" (
+  "id" BIGSERIAL,
+  "processo_id" BIGINT NOT NULL,
+  "versao_processo_id" BIGINT NOT NULL,
+  "solicitante" VARCHAR(120) NULL,
+  "dados_json" TEXT NULL,
+  "estado_execucao_json" TEXT NULL,
+  "elemento_atual_id" VARCHAR(120) NULL,
+  "status" VARCHAR(30) NOT NULL DEFAULT 'EM_ANDAMENTO',
+  "iniciado_em" TIMESTAMP NOT NULL,
+  "encerrado_em" TIMESTAMP NULL,
+  "criado_por" VARCHAR(120) NULL,
+  "atualizado_por" VARCHAR(120) NULL,
+  "dt_criacao" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "dt_atualizacao" TIMESTAMP NULL,
+  "identificador" VARCHAR(180) NULL,
+  "desc_iden" VARCHAR(180) NULL,
+  PRIMARY KEY ("id")
+);
+
+CREATE TABLE IF NOT EXISTS "ECM_ARQUIVOS" (
+  "id" BIGSERIAL,
+  "processo_id" BIGINT NOT NULL,
+  "instancia_processo_id" BIGINT NULL,
+  "usuario_dono" VARCHAR(120) NOT NULL,
+  "nome_arquivo" VARCHAR(260) NOT NULL,
+  "caminho_arquivo" VARCHAR(1000) NOT NULL,
+  "tipo_mime" VARCHAR(180) NULL,
+  "tamanho_bytes" BIGINT NOT NULL,
+  "versao" INT NOT NULL DEFAULT 1,
+  "criado_por" VARCHAR(120) NULL,
+  "dt_criacao" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "dt_atualizacao" TIMESTAMP NULL,
+  PRIMARY KEY ("id")
+);
+
+CREATE TABLE IF NOT EXISTS "FORMULARIOS" (
+  "id" BIGSERIAL,
+  "processo_id" BIGINT NOT NULL,
+  "nome" VARCHAR(180) NOT NULL,
+  "xml_bpmn" TEXT NOT NULL,
+  "propriedades_json" TEXT NULL,
+  "status" VARCHAR(30) NOT NULL DEFAULT 'ATIVO',
+  "criado_por" VARCHAR(120) NULL,
+  "atualizado_por" VARCHAR(120) NULL,
+  "dt_criacao" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "dt_atualizacao" TIMESTAMP NULL,
+  PRIMARY KEY ("id")
+);
+
+CREATE TABLE IF NOT EXISTS "HISTORICO_FLUXO" (
+  "id" BIGSERIAL,
+  "instancia_processo_id" BIGINT NOT NULL,
+  "processo_id" BIGINT NOT NULL,
+  "versao_processo_id" BIGINT NOT NULL,
+  "elemento_origem_id" VARCHAR(120) NULL,
+  "elemento_destino_id" VARCHAR(120) NULL,
+  "tipo_evento" VARCHAR(60) NOT NULL,
+  "descricao" TEXT NULL,
+  "executor" VARCHAR(120) NULL,
+  "dados_json" TEXT NULL,
+  "status" VARCHAR(30) NOT NULL DEFAULT 'ATIVO',
+  "criado_por" VARCHAR(120) NULL,
+  "atualizado_por" VARCHAR(120) NULL,
+  "dt_criacao" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "dt_atualizacao" TIMESTAMP NULL,
+  PRIMARY KEY ("id")
+);
+
+CREATE TABLE IF NOT EXISTS "PROCESSO_API_CONFIG" (
+  "id" BIGSERIAL,
+  "processo_id" BIGINT NOT NULL,
+  "chave_api_publica" VARCHAR(120) NOT NULL,
+  "permite_protheus" BOOLEAN NOT NULL DEFAULT TRUE,
+  "permite_mysql" BOOLEAN NOT NULL DEFAULT TRUE,
+  "permite_externo" BOOLEAN NOT NULL DEFAULT TRUE,
+  "ativo" BOOLEAN NOT NULL DEFAULT TRUE,
+  "criado_por" VARCHAR(120) NULL,
+  "atualizado_por" VARCHAR(120) NULL,
+  "dt_criacao" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "dt_atualizacao" TIMESTAMP NULL,
+  PRIMARY KEY ("id")
+);
+
+CREATE TABLE IF NOT EXISTS "PROCESSO_INTEGRACAO_EVENTOS" (
+  "id" BIGSERIAL,
+  "tipo_origem" VARCHAR(40) NOT NULL,
+  "chave_origem" VARCHAR(180) NOT NULL,
+  "processo_id" BIGINT NOT NULL,
+  "instancia_processo_id" BIGINT NOT NULL,
+  "dt_criacao" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY ("id")
+);
+
+CREATE TABLE IF NOT EXISTS "PROCESSO_PERMISSOES" (
+  "id" BIGSERIAL,
+  "processo_id" BIGINT NOT NULL,
+  "usuario" VARCHAR(120) NOT NULL,
+  "pode_visualizar" BOOLEAN NOT NULL DEFAULT TRUE,
+  "pode_editar" BOOLEAN NOT NULL DEFAULT FALSE,
+  "pode_modelar" BOOLEAN NOT NULL DEFAULT FALSE,
+  "pode_executar" BOOLEAN NOT NULL DEFAULT FALSE,
+  "pode_administrar" BOOLEAN NOT NULL DEFAULT FALSE,
+  "criado_por" VARCHAR(120) NULL,
+  "dt_criacao" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY ("id")
+);
+
+CREATE TABLE IF NOT EXISTS "PROPRIEDADES_BPMN" (
+  "id" BIGSERIAL,
+  "versao_processo_id" BIGINT NOT NULL,
+  "elemento_id" VARCHAR(120) NOT NULL,
+  "tipo_elemento" VARCHAR(120) NOT NULL,
+  "propriedade" VARCHAR(120) NOT NULL,
+  "valor_texto" TEXT NULL,
+  "valor_json" TEXT NULL,
+  "status" VARCHAR(30) NOT NULL DEFAULT 'ATIVO',
+  "criado_por" VARCHAR(120) NULL,
+  "atualizado_por" VARCHAR(120) NULL,
+  "dt_criacao" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "dt_atualizacao" TIMESTAMP NULL,
+  PRIMARY KEY ("id")
+);
+
+CREATE TABLE IF NOT EXISTS "TAREFAS" (
+  "id" BIGSERIAL,
+  "instancia_processo_id" BIGINT NOT NULL,
+  "processo_id" BIGINT NOT NULL,
+  "versao_processo_id" BIGINT NOT NULL,
+  "elemento_id" VARCHAR(120) NOT NULL,
+  "nome_etapa" VARCHAR(180) NOT NULL,
+  "responsavel" VARCHAR(120) NULL,
+  "sla_horas" INT NOT NULL DEFAULT 24,
+  "configuracao_formulario_json" TEXT NULL,
+  "resposta_json" TEXT NULL,
+  "acao_final" VARCHAR(50) NULL,
+  "observacao_final" TEXT NULL,
+  "status" VARCHAR(30) NOT NULL DEFAULT 'MINHAS_TAREFAS',
+  "iniciado_em" TIMESTAMP NULL,
+  "concluido_em" TIMESTAMP NULL,
+  "concluido_por" VARCHAR(120) NULL,
+  "criado_por" VARCHAR(120) NULL,
+  "atualizado_por" VARCHAR(120) NULL,
+  "dt_criacao" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "dt_atualizacao" TIMESTAMP NULL,
+  PRIMARY KEY ("id")
+);
+
+CREATE TABLE IF NOT EXISTS "RESPOSTAS_FORMULARIO" (
+  "id" BIGSERIAL,
+  "tarefa_id" BIGINT NOT NULL,
+  "instancia_processo_id" BIGINT NOT NULL,
+  "formulario_id" BIGINT NOT NULL,
+  "resposta_json" TEXT NOT NULL,
+  "status" VARCHAR(30) NOT NULL DEFAULT 'ATIVO',
+  "respondido_por" VARCHAR(120) NULL,
+  "criado_por" VARCHAR(120) NULL,
+  "atualizado_por" VARCHAR(120) NULL,
+  "dt_criacao" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "dt_atualizacao" TIMESTAMP NULL,
+  PRIMARY KEY ("id")
+);
+
+CREATE TABLE IF NOT EXISTS "WF_COMENTARIOS" (
+  "id" BIGSERIAL,
+  "processo_id" BIGINT NOT NULL,
+  "instancia_processo_id" BIGINT NOT NULL,
+  "tarefa_id" BIGINT NULL,
+  "autor" VARCHAR(120) NOT NULL,
+  "mensagem" TEXT NOT NULL,
+  "mencoes_json" TEXT NULL,
+  "status" VARCHAR(20) NOT NULL DEFAULT 'ATIVO',
+  "dt_criacao" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "dt_atualizacao" TIMESTAMP NULL,
+  PRIMARY KEY ("id")
+);
+
+CREATE TABLE IF NOT EXISTS "WF_DASHBOARD_PREFS" (
+  "id" BIGSERIAL,
+  "usuario" VARCHAR(120) NOT NULL,
+  "perfil" VARCHAR(40) NOT NULL,
+  "widgets_json" TEXT NULL,
+  "atalhos_json" TEXT NULL,
+  "status" VARCHAR(20) NOT NULL DEFAULT 'ATIVO',
+  "dt_criacao" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "dt_atualizacao" TIMESTAMP NULL,
+  PRIMARY KEY ("id")
+);
+
+CREATE TABLE IF NOT EXISTS "WF_NOTIFICACOES" (
+  "id" BIGSERIAL,
+  "usuario" VARCHAR(120) NOT NULL,
+  "titulo" VARCHAR(180) NOT NULL,
+  "mensagem" TEXT NULL,
+  "tipo" VARCHAR(40) NOT NULL DEFAULT 'INFO',
+  "escopo_tipo" VARCHAR(30) NOT NULL DEFAULT 'SYSTEM',
+  "escopo_id" BIGINT NULL,
+  "prioridade" INT NOT NULL DEFAULT 2,
+  "nivel_escalonamento" INT NOT NULL DEFAULT 0,
+  "meta_json" TEXT NULL,
+  "status" VARCHAR(20) NOT NULL DEFAULT 'UNREAD',
+  "lido_em" TIMESTAMP NULL,
+  "dt_criacao" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "dt_atualizacao" TIMESTAMP NULL,
+  PRIMARY KEY ("id")
+);
+
+CREATE INDEX IF NOT EXISTS "IDX_ECM_ARQUIVOS_PROCESSO_USER" ON "ECM_ARQUIVOS" ("processo_id", "usuario_dono");
+
+CREATE INDEX IF NOT EXISTS "idx_formularios_processo" ON "FORMULARIOS" ("processo_id");
+
+CREATE INDEX IF NOT EXISTS "idx_formularios_status" ON "FORMULARIOS" ("status");
+
+CREATE INDEX IF NOT EXISTS "idx_historico_data" ON "HISTORICO_FLUXO" ("dt_criacao");
+
+CREATE INDEX IF NOT EXISTS "idx_historico_evento" ON "HISTORICO_FLUXO" ("tipo_evento");
+
+CREATE INDEX IF NOT EXISTS "idx_historico_instancia" ON "HISTORICO_FLUXO" ("instancia_processo_id");
+
+CREATE INDEX IF NOT EXISTS "idx_instancias_iniciado" ON "INSTANCIAS_PROCESSO" ("iniciado_em");
+
+CREATE INDEX IF NOT EXISTS "idx_instancias_processo_status" ON "INSTANCIAS_PROCESSO" ("processo_id", "status");
+
+CREATE INDEX IF NOT EXISTS "idx_instancias_status" ON "INSTANCIAS_PROCESSO" ("status");
+
+CREATE UNIQUE INDEX IF NOT EXISTS "UQ_PROCESSO_API_CONFIG_PROCESSO" ON "PROCESSO_API_CONFIG" ("processo_id");
+
+CREATE UNIQUE INDEX IF NOT EXISTS "UQ_PROCESSO_INTEGRACAO_EVENTOS" ON "PROCESSO_INTEGRACAO_EVENTOS" ("tipo_origem", "chave_origem");
+
+CREATE UNIQUE INDEX IF NOT EXISTS "UQ_PROCESSO_PERMISSOES_USER" ON "PROCESSO_PERMISSOES" ("processo_id", "usuario");
+
+CREATE INDEX IF NOT EXISTS "idx_processos_nome" ON "PROCESSOS" ("nome");
+
+CREATE INDEX IF NOT EXISTS "idx_processos_status" ON "PROCESSOS" ("status");
+
+CREATE INDEX IF NOT EXISTS "idx_prop_bpmn_element" ON "PROPRIEDADES_BPMN" ("elemento_id");
+
+CREATE INDEX IF NOT EXISTS "idx_prop_bpmn_status" ON "PROPRIEDADES_BPMN" ("status");
+
+CREATE INDEX IF NOT EXISTS "idx_prop_bpmn_type" ON "PROPRIEDADES_BPMN" ("tipo_elemento");
+
+CREATE UNIQUE INDEX IF NOT EXISTS "uq_prop_bpmn_elemento" ON "PROPRIEDADES_BPMN" ("versao_processo_id", "elemento_id", "propriedade");
+
+CREATE INDEX IF NOT EXISTS "idx_respostas_formulario" ON "RESPOSTAS_FORMULARIO" ("formulario_id");
+
+CREATE INDEX IF NOT EXISTS "idx_respostas_instancia" ON "RESPOSTAS_FORMULARIO" ("instancia_processo_id");
+
+CREATE INDEX IF NOT EXISTS "idx_respostas_status" ON "RESPOSTAS_FORMULARIO" ("status");
+
+CREATE INDEX IF NOT EXISTS "idx_tarefas_instancia_status" ON "TAREFAS" ("instancia_processo_id", "status");
+
+CREATE INDEX IF NOT EXISTS "idx_tarefas_responsavel" ON "TAREFAS" ("responsavel");
+
+CREATE INDEX IF NOT EXISTS "idx_tarefas_status" ON "TAREFAS" ("status");
+
+CREATE INDEX IF NOT EXISTS "idx_versoes_publicado" ON "VERSOES_PROCESSO" ("publicado_em");
+
+CREATE INDEX IF NOT EXISTS "idx_versoes_status" ON "VERSOES_PROCESSO" ("status");
+
+CREATE UNIQUE INDEX IF NOT EXISTS "uq_versao_processo" ON "VERSOES_PROCESSO" ("processo_id", "versao");
+
+CREATE INDEX IF NOT EXISTS "idx_wf_comentarios_autor" ON "WF_COMENTARIOS" ("autor", "dt_criacao");
+
+CREATE INDEX IF NOT EXISTS "idx_wf_comentarios_instancia" ON "WF_COMENTARIOS" ("instancia_processo_id", "dt_criacao");
+
+CREATE INDEX IF NOT EXISTS "idx_wf_comentarios_tarefa" ON "WF_COMENTARIOS" ("tarefa_id", "dt_criacao");
+
+CREATE UNIQUE INDEX IF NOT EXISTS "uq_wf_dashboard_prefs_usuario" ON "WF_DASHBOARD_PREFS" ("usuario");
+
+CREATE INDEX IF NOT EXISTS "idx_wf_notificacoes_escopo" ON "WF_NOTIFICACOES" ("escopo_tipo", "escopo_id", "nivel_escalonamento", "dt_criacao");
+
+CREATE INDEX IF NOT EXISTS "idx_wf_notificacoes_usuario_status" ON "WF_NOTIFICACOES" ("usuario", "status", "dt_criacao");
+
+DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'FK_PROCESSO_API_CONFIG_processo_id') THEN ALTER TABLE "PROCESSO_API_CONFIG" ADD CONSTRAINT "FK_PROCESSO_API_CONFIG_processo_id" FOREIGN KEY ("processo_id") REFERENCES "PROCESSOS"("id") DEFERRABLE INITIALLY DEFERRED; END IF; END $$;
+
+DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'FK_PROCESSO_INTEGRACAO_EVENTOS_processo_id') THEN ALTER TABLE "PROCESSO_INTEGRACAO_EVENTOS" ADD CONSTRAINT "FK_PROCESSO_INTEGRACAO_EVENTOS_processo_id" FOREIGN KEY ("processo_id") REFERENCES "PROCESSOS"("id") DEFERRABLE INITIALLY DEFERRED; END IF; END $$;
+
+DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'FK_ECM_ARQUIVOS_processo_id') THEN ALTER TABLE "ECM_ARQUIVOS" ADD CONSTRAINT "FK_ECM_ARQUIVOS_processo_id" FOREIGN KEY ("processo_id") REFERENCES "PROCESSOS"("id") DEFERRABLE INITIALLY DEFERRED; END IF; END $$;
+
+DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'FK_FORMULARIOS_processo_id') THEN ALTER TABLE "FORMULARIOS" ADD CONSTRAINT "FK_FORMULARIOS_processo_id" FOREIGN KEY ("processo_id") REFERENCES "PROCESSOS"("id") DEFERRABLE INITIALLY DEFERRED; END IF; END $$;
+
+DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'FK_VERSOES_PROCESSO_processo_id') THEN ALTER TABLE "VERSOES_PROCESSO" ADD CONSTRAINT "FK_VERSOES_PROCESSO_processo_id" FOREIGN KEY ("processo_id") REFERENCES "PROCESSOS"("id") DEFERRABLE INITIALLY DEFERRED; END IF; END $$;
+
+DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'FK_INSTANCIAS_PROCESSO_processo_id') THEN ALTER TABLE "INSTANCIAS_PROCESSO" ADD CONSTRAINT "FK_INSTANCIAS_PROCESSO_processo_id" FOREIGN KEY ("processo_id") REFERENCES "PROCESSOS"("id") DEFERRABLE INITIALLY DEFERRED; END IF; END $$;
+
+DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'FK_TAREFAS_processo_id') THEN ALTER TABLE "TAREFAS" ADD CONSTRAINT "FK_TAREFAS_processo_id" FOREIGN KEY ("processo_id") REFERENCES "PROCESSOS"("id") DEFERRABLE INITIALLY DEFERRED; END IF; END $$;
+
+DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'FK_HISTORICO_FLUXO_processo_id') THEN ALTER TABLE "HISTORICO_FLUXO" ADD CONSTRAINT "FK_HISTORICO_FLUXO_processo_id" FOREIGN KEY ("processo_id") REFERENCES "PROCESSOS"("id") DEFERRABLE INITIALLY DEFERRED; END IF; END $$;
+
+DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'FK_PROCESSO_PERMISSOES_processo_id') THEN ALTER TABLE "PROCESSO_PERMISSOES" ADD CONSTRAINT "FK_PROCESSO_PERMISSOES_processo_id" FOREIGN KEY ("processo_id") REFERENCES "PROCESSOS"("id") DEFERRABLE INITIALLY DEFERRED; END IF; END $$;
+
+DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'FK_RESPOSTAS_FORMULARIO_formulario_id') THEN ALTER TABLE "RESPOSTAS_FORMULARIO" ADD CONSTRAINT "FK_RESPOSTAS_FORMULARIO_formulario_id" FOREIGN KEY ("formulario_id") REFERENCES "FORMULARIOS"("id") DEFERRABLE INITIALLY DEFERRED; END IF; END $$;
+
+DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'FK_INSTANCIAS_PROCESSO_versao_processo_id') THEN ALTER TABLE "INSTANCIAS_PROCESSO" ADD CONSTRAINT "FK_INSTANCIAS_PROCESSO_versao_processo_id" FOREIGN KEY ("versao_processo_id") REFERENCES "VERSOES_PROCESSO"("id") DEFERRABLE INITIALLY DEFERRED; END IF; END $$;
+
+DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'FK_TAREFAS_versao_processo_id') THEN ALTER TABLE "TAREFAS" ADD CONSTRAINT "FK_TAREFAS_versao_processo_id" FOREIGN KEY ("versao_processo_id") REFERENCES "VERSOES_PROCESSO"("id") DEFERRABLE INITIALLY DEFERRED; END IF; END $$;
+
+DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'FK_HISTORICO_FLUXO_versao_processo_id') THEN ALTER TABLE "HISTORICO_FLUXO" ADD CONSTRAINT "FK_HISTORICO_FLUXO_versao_processo_id" FOREIGN KEY ("versao_processo_id") REFERENCES "VERSOES_PROCESSO"("id") DEFERRABLE INITIALLY DEFERRED; END IF; END $$;
+
+DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'FK_PROPRIEDADES_BPMN_versao_processo_id') THEN ALTER TABLE "PROPRIEDADES_BPMN" ADD CONSTRAINT "FK_PROPRIEDADES_BPMN_versao_processo_id" FOREIGN KEY ("versao_processo_id") REFERENCES "VERSOES_PROCESSO"("id") DEFERRABLE INITIALLY DEFERRED; END IF; END $$;
+
+DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'FK_PROCESSO_INTEGRACAO_EVENTOS_instancia_processo_id') THEN ALTER TABLE "PROCESSO_INTEGRACAO_EVENTOS" ADD CONSTRAINT "FK_PROCESSO_INTEGRACAO_EVENTOS_instancia_processo_id" FOREIGN KEY ("instancia_processo_id") REFERENCES "INSTANCIAS_PROCESSO"("id") DEFERRABLE INITIALLY DEFERRED; END IF; END $$;
+
+DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'FK_ECM_ARQUIVOS_instancia_processo_id') THEN ALTER TABLE "ECM_ARQUIVOS" ADD CONSTRAINT "FK_ECM_ARQUIVOS_instancia_processo_id" FOREIGN KEY ("instancia_processo_id") REFERENCES "INSTANCIAS_PROCESSO"("id") DEFERRABLE INITIALLY DEFERRED; END IF; END $$;
+
+DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'FK_TAREFAS_instancia_processo_id') THEN ALTER TABLE "TAREFAS" ADD CONSTRAINT "FK_TAREFAS_instancia_processo_id" FOREIGN KEY ("instancia_processo_id") REFERENCES "INSTANCIAS_PROCESSO"("id") DEFERRABLE INITIALLY DEFERRED; END IF; END $$;
+
+DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'FK_RESPOSTAS_FORMULARIO_instancia_processo_id') THEN ALTER TABLE "RESPOSTAS_FORMULARIO" ADD CONSTRAINT "FK_RESPOSTAS_FORMULARIO_instancia_processo_id" FOREIGN KEY ("instancia_processo_id") REFERENCES "INSTANCIAS_PROCESSO"("id") DEFERRABLE INITIALLY DEFERRED; END IF; END $$;
+
+DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'FK_HISTORICO_FLUXO_instancia_processo_id') THEN ALTER TABLE "HISTORICO_FLUXO" ADD CONSTRAINT "FK_HISTORICO_FLUXO_instancia_processo_id" FOREIGN KEY ("instancia_processo_id") REFERENCES "INSTANCIAS_PROCESSO"("id") DEFERRABLE INITIALLY DEFERRED; END IF; END $$;
+
+DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'FK_RESPOSTAS_FORMULARIO_tarefa_id') THEN ALTER TABLE "RESPOSTAS_FORMULARIO" ADD CONSTRAINT "FK_RESPOSTAS_FORMULARIO_tarefa_id" FOREIGN KEY ("tarefa_id") REFERENCES "TAREFAS"("id") DEFERRABLE INITIALLY DEFERRED; END IF; END $$;
+
+DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'CK_PROCESSOS_TIPO_IDENTIFICADOR') THEN ALTER TABLE "PROCESSOS" ADD CONSTRAINT "CK_PROCESSOS_TIPO_IDENTIFICADOR" CHECK ("tipo_identificador" IS NULL OR "tipo_identificador" IN ('SEQUENCIAL', 'TEXTO')); END IF; END $$;

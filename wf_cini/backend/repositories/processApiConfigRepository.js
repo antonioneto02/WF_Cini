@@ -1,102 +1,92 @@
-const db = require('../models/db');
+const { ProcessoApiConfig, Processos } = require('../../models');
+const { col, idInserido, tabelaInexistente } = require('../../database/consultas');
 
-function isMissingTableError(error) {
-  return Boolean(error && error.message && /Invalid object name/i.test(error.message));
-}
+const ATRIBUTOS_PERMISSAO = [
+  ['chave_api_publica', 'public_api_key'],
+  ['permite_protheus', 'allow_protheus'],
+  ['permite_mysql', 'allow_mysql'],
+  ['permite_externo', 'allow_external'],
+  'ativo',
+];
 
 async function getByProcessId(processoId) {
   try {
-    const rows = await db.query(
-      `SELECT id, processo_id,
-              chave_api_publica AS public_api_key,
-              permite_protheus AS allow_protheus,
-              permite_mysql AS allow_mysql,
-              permite_externo AS allow_external,
-              ativo,
-              criado_por, dt_criacao, dt_atualizacao
-       FROM processo_api_config
-       WHERE processo_id = :processoId`,
-      { processoId }
-    );
-
-    return rows[0] || null;
+    return await ProcessoApiConfig.findOne({
+      attributes: ['id', 'processo_id', ...ATRIBUTOS_PERMISSAO, 'criado_por', 'dt_criacao', 'dt_atualizacao'],
+      where: { processo_id: processoId },
+      order: [['id', 'ASC']],
+      raw: true,
+    });
   } catch (error) {
-    if (isMissingTableError(error)) return null;
+    if (tabelaInexistente(error)) return null;
     throw error;
   }
 }
 
+function camposConfiguracao(payload) {
+  return {
+    chave_api_publica: payload.public_api_key,
+    permite_protheus: Boolean(payload.allow_protheus),
+    permite_mysql: Boolean(payload.allow_mysql),
+    permite_externo: Boolean(payload.allow_external),
+    ativo: Boolean(payload.ativo),
+  };
+}
+
 async function upsertByProcessId(processoId, payload, actor) {
   const current = await getByProcessId(processoId);
+  const agora = new Date();
 
   try {
     if (!current) {
-      const result = await db.query(
-        `INSERT INTO processo_api_config
-          (processo_id, chave_api_publica, permite_protheus, permite_mysql, permite_externo, ativo, criado_por, dt_criacao, dt_atualizacao)
-         VALUES
-          (:processoId, :publicApiKey, :allowProtheus, :allowMysql, :allowExternal, :ativo, :actor, NOW(), NOW())`,
-        {
-          processoId,
-          publicApiKey: payload.public_api_key,
-          allowProtheus: payload.allow_protheus ? 1 : 0,
-          allowMysql: payload.allow_mysql ? 1 : 0,
-          allowExternal: payload.allow_external ? 1 : 0,
-          ativo: payload.ativo ? 1 : 0,
-          actor,
-        }
-      );
+      const registro = await ProcessoApiConfig.create({
+        processo_id: processoId,
+        ...camposConfiguracao(payload),
+        criado_por: actor,
+        dt_criacao: agora,
+        dt_atualizacao: agora,
+      });
 
-      return result.insertId;
+      return idInserido(registro);
     }
 
-    await db.query(
-      `UPDATE processo_api_config
-       SET chave_api_publica = :publicApiKey,
-         permite_protheus = :allowProtheus,
-         permite_mysql = :allowMysql,
-         permite_externo = :allowExternal,
-           ativo = :ativo,
-           atualizado_por = :actor,
-           dt_atualizacao = NOW()
-       WHERE processo_id = :processoId`,
-      {
-        processoId,
-        publicApiKey: payload.public_api_key,
-        allowProtheus: payload.allow_protheus ? 1 : 0,
-        allowMysql: payload.allow_mysql ? 1 : 0,
-        allowExternal: payload.allow_external ? 1 : 0,
-        ativo: payload.ativo ? 1 : 0,
-        actor,
-      }
+    await ProcessoApiConfig.update(
+      { ...camposConfiguracao(payload), atualizado_por: actor, dt_atualizacao: agora },
+      { where: { processo_id: processoId } }
     );
 
     return current.id;
   } catch (error) {
-    if (isMissingTableError(error)) {
+    if (tabelaInexistente(error)) {
       throw new Error('Tabela de API por processo ainda nao foi criada no banco. Execute o script SQL novo.');
     }
     throw error;
   }
 }
 
+const instante = valor => (valor ? new Date(valor).getTime() : null);
+
 async function listAllConfigs() {
   try {
-          return db.query(
-          `SELECT c.id, c.processo_id,
-            c.chave_api_publica AS public_api_key,
-            c.permite_protheus AS allow_protheus,
-            c.permite_mysql AS allow_mysql,
-            c.permite_externo AS allow_external,
-            c.ativo,
-            p.nome AS processo_nome, p.id AS processo_codigo,
-            c.dt_criacao, c.dt_atualizacao
-           FROM processo_api_config c
-           JOIN processos p ON p.id = c.processo_id
-           ORDER BY c.dt_atualizacao DESC`
-    );
+    const rows = await ProcessoApiConfig.findAll({
+      attributes: [
+        'id', 'processo_id', ...ATRIBUTOS_PERMISSAO,
+        [col('processo.nome'), 'processo_nome'], [col('processo.id'), 'processo_codigo'],
+        'dt_criacao', 'dt_atualizacao',
+      ],
+      include: [{ model: Processos, as: 'processo', attributes: [], required: true }],
+      raw: true,
+    });
+    return rows.sort((a, b) => {
+      const ta = instante(a.dt_atualizacao);
+      const tb = instante(b.dt_atualizacao);
+      if (ta === tb) return 0;
+      if (ta === null) return 1;
+      if (tb === null) return -1;
+      return tb - ta;
+    });
   } catch (error) {
-    if (isMissingTableError(error)) return [];
+    if (tabelaInexistente(error)) return [];
     throw error;
   }
 }

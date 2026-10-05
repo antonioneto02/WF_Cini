@@ -1,23 +1,7 @@
-const db = require('../models/db');
-
-const _tableColumnCache = {};
-
-async function hasTableColumn(tableName, columnName) {
-  const key = `${tableName}.${columnName}`;
-  if (_tableColumnCache[key] !== undefined) return _tableColumnCache[key];
-  try {
-    const rows = await db.query(
-      `SELECT COUNT(*) AS cnt FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = :tableName AND COLUMN_NAME = :columnName`,
-      { tableName, columnName }
-    );
-    const exists = rows && rows[0] && Number(rows[0].cnt || 0) > 0;
-    _tableColumnCache[key] = exists;
-    return exists;
-  } catch (err) {
-    _tableColumnCache[key] = false;
-    return false;
-  }
-}
+const { Tarefas, Processos, InstanciasProcesso } = require('../../models');
+const {
+  Op, fn, col, where, minusculo, contem, dataDoFiltro, paginar, idInserido,
+} = require('../../database/consultas');
 
 function normalizeIdentifier(value) {
   return String(value || '').trim().toLowerCase();
@@ -31,22 +15,21 @@ function normalizeIdentifierList(list) {
   return Array.from(new Set(normalized));
 }
 
-function buildUserVisibilityClause(userKeys, params) {
-  if (!userKeys.length) return '';
-
-  const parts = userKeys.map((key, index) => {
-    const paramName = `userKey${index}`;
-    params[paramName] = key;
-    return `LOWER(LTRIM(RTRIM(ISNULL(t.responsavel, '')))) = :${paramName}`;
-  });
-
-  return `
-       AND (
-         LOWER(LTRIM(RTRIM(ISNULL(t.responsavel, '')))) = ''
-         OR LOWER(LTRIM(RTRIM(ISNULL(t.responsavel, '')))) = 'any'
-          OR ${parts.join('\n          OR ')}
-       )`;
+function responsavelExibido(valor) {
+  if (valor === null || valor === undefined) return '';
+  return String(valor).trim().toLowerCase() === 'any' ? '' : valor;
 }
+
+function comResponsavelExibido(row) {
+  return row ? { ...row, responsavel: responsavelExibido(row.responsavel) } : row;
+}
+
+const juncoes = [
+  { model: Processos, as: 'processo', attributes: [], required: true },
+  { model: InstanciasProcesso, as: 'instancia', attributes: [], required: true },
+];
+
+const descricaoIdentificador = [fn('COALESCE', col('processo.desc_iden'), col('instancia.desc_iden')), 'processo_desc_iden'];
 
 async function createTask({
   instanciaId,
@@ -60,63 +43,70 @@ async function createTask({
   status = 'MINHAS_TAREFAS',
   criadoPor = null,
 }) {
-  const normalizedResponsavel = normalizeIdentifier(responsavel) || null;
-  const normalizedCriadoPor = criadoPor ? String(criadoPor).trim().toLowerCase() : null;
+  const agora = new Date();
+  const registro = await Tarefas.create({
+    instancia_processo_id: instanciaId,
+    processo_id: processoId,
+    versao_processo_id: versaoProcessoId,
+    elemento_id: elementId,
+    nome_etapa: nomeEtapa,
+    responsavel: normalizeIdentifier(responsavel) || null,
+    sla_horas: slaHoras,
+    configuracao_formulario_json: formConfigJson,
+    status,
+    criado_por: criadoPor ? String(criadoPor).trim().toLowerCase() : null,
+    dt_criacao: agora,
+    dt_atualizacao: agora,
+  });
 
-  const result = await db.query(
-    `INSERT INTO tarefas
-      (instancia_processo_id, processo_id, versao_processo_id, elemento_id, nome_etapa,
-       responsavel, sla_horas, configuracao_formulario_json, status, criado_por, dt_criacao, dt_atualizacao)
-     VALUES
-      (:instanciaId, :processoId, :versaoProcessoId, :elementId, :nomeEtapa,
-       :responsavel, :slaHoras, :formConfigJson, :status, :criadoPor, NOW(), NOW())`,
-    {
-      instanciaId,
-      processoId,
-      versaoProcessoId,
-      elementId,
-      nomeEtapa,
-      responsavel: normalizedResponsavel,
-      slaHoras,
-      formConfigJson,
-      status,
-      criadoPor: normalizedCriadoPor,
-    }
-  );
-
-  return result.insertId;
+  return idInserido(registro);
 }
 
 async function getTaskById(taskId) {
-  const hasProcessDesc = await hasTableColumn('PROCESSOS', 'desc_iden');
-  const hasInstDesc = await hasTableColumn('INSTANCIAS_PROCESSO', 'desc_iden');
+  const row = await Tarefas.findOne({
+    attributes: [
+      'id', 'instancia_processo_id', 'processo_id', 'versao_processo_id',
+      ['elemento_id', 'element_id'], 'nome_etapa', 'responsavel', 'sla_horas',
+      ['configuracao_formulario_json', 'form_config_json'], 'resposta_json',
+      'acao_final', 'observacao_final', 'status', ['iniciado_em', 'started_at'],
+      ['concluido_em', 'completed_at'], ['concluido_por', 'completed_by'], ['dt_criacao', 'created_at'],
+      [col('processo.nome'), 'processo_nome'],
+      [col('instancia.solicitante'), 'solicitante'],
+      [col('instancia.identificador'), 'identificador'],
+      [col('instancia.dados_json'), 'payload_json'],
+      descricaoIdentificador,
+    ],
+    include: juncoes,
+    where: { id: taskId },
+    raw: true,
+  });
 
-  let descSelect = '';
-  if (hasProcessDesc && hasInstDesc) {
-    descSelect = ', COALESCE(p.desc_iden, i.desc_iden) AS processo_desc_iden';
-  } else if (hasProcessDesc) {
-    descSelect = ', p.desc_iden AS processo_desc_iden';
-  } else if (hasInstDesc) {
-    descSelect = ', i.desc_iden AS processo_desc_iden';
+  return comResponsavelExibido(row);
+}
+
+function filtroKanban({
+  status, processoId, processName, instanciaId, identificador, startDate, endDate, responsavel, userKeys, search,
+}) {
+  const condicoes = [];
+  if (status !== null && status !== undefined) condicoes.push({ status });
+  if (processoId !== null && processoId !== undefined) condicoes.push({ processo_id: processoId });
+  if (processName) condicoes.push(contem('processo.nome', processName));
+  if (instanciaId) condicoes.push({ instancia_processo_id: instanciaId });
+  if (identificador) condicoes.push(contem('instancia.identificador', identificador));
+  if (startDate) condicoes.push({ dt_criacao: { [Op.gte]: dataDoFiltro(startDate) } });
+  if (endDate) condicoes.push({ dt_criacao: { [Op.lt]: dataDoFiltro(endDate, 1) } });
+  if (responsavel) condicoes.push(where(minusculo('Tarefas.responsavel'), responsavel));
+  if (userKeys.length) condicoes.push(where(minusculo('Tarefas.responsavel'), { [Op.in]: ['', 'any', ...userKeys] }));
+  if (search) {
+    condicoes.push({
+      [Op.or]: [
+        contem('Tarefas.nome_etapa', search),
+        contem('processo.nome', search),
+        contem('instancia.solicitante', search),
+      ],
+    });
   }
-
-  const rows = await db.query(
-    `SELECT t.id, t.instancia_processo_id, t.processo_id, t.versao_processo_id,
-            t.elemento_id AS element_id, t.nome_etapa,
-            CASE WHEN LOWER(LTRIM(RTRIM(ISNULL(t.responsavel, '')))) = 'any' THEN '' ELSE ISNULL(t.responsavel, '') END AS responsavel,
-            t.sla_horas,
-            t.configuracao_formulario_json AS form_config_json, t.resposta_json,
-            t.acao_final, t.observacao_final, t.status, t.iniciado_em AS started_at,
-            t.concluido_em AS completed_at, t.concluido_por AS completed_by, t.dt_criacao AS created_at,
-                 p.nome AS processo_nome, i.solicitante, i.identificador, i.dados_json AS payload_json${descSelect}
-     FROM tarefas t
-     JOIN processos p ON p.id = t.processo_id
-     JOIN instancias_processo i ON i.id = t.instancia_processo_id
-     WHERE t.id = :taskId`,
-    { taskId }
-  );
-
-  return rows[0] || null;
+  return { [Op.and]: condicoes };
 }
 
 async function listKanbanTasks({
@@ -136,160 +126,110 @@ async function listKanbanTasks({
 }) {
   const safePage = Math.max(1, Number(page) || 1);
   const safePageSize = Math.max(1, Number(pageSize) || 12);
-  const offset = (safePage - 1) * safePageSize;
-  const likeSearch = `%${search || ''}%`;
-  const normalizedResponsavel = normalizeIdentifier(responsavel) || null;
-  const safeProcessName = processName && String(processName).trim() ? String(processName).trim() : null;
-  const safeIdentificador = identificador && String(identificador).trim() ? String(identificador).trim() : null;
-  const safeInstanciaId = instanciaId ? Number(instanciaId) : null;
-  const safeStartDate = startDate && String(startDate).trim() ? String(startDate).trim() : null;
-  const safeEndDate = endDate && String(endDate).trim() ? String(endDate).trim() : null;
-  const normalizedUserKeys = normalizeIdentifierList((userKeys && userKeys.length ? userKeys : [user]) || []);
-
-  const queryParams = {
+  const filtro = filtroKanban({
     status,
     processoId,
-    processName: safeProcessName,
-    instanciaId: safeInstanciaId,
-    identificador: safeIdentificador,
-    startDate: safeStartDate,
-    endDate: safeEndDate,
-    responsavel: normalizedResponsavel,
-    likeSearch,
-    limit: safePageSize,
-    offset,
-    processNameLike: safeProcessName ? `%${safeProcessName}%` : null,
-    identificadorLike: safeIdentificador ? `%${safeIdentificador}%` : null,
-  };
+    processName: processName && String(processName).trim() ? String(processName).trim() : null,
+    instanciaId: instanciaId ? Number(instanciaId) : null,
+    identificador: identificador && String(identificador).trim() ? String(identificador).trim() : null,
+    startDate: startDate && String(startDate).trim() ? String(startDate).trim() : null,
+    endDate: endDate && String(endDate).trim() ? String(endDate).trim() : null,
+    responsavel: normalizeIdentifier(responsavel) || null,
+    userKeys: normalizeIdentifierList((userKeys && userKeys.length ? userKeys : [user]) || []),
+    search: search || '',
+  });
 
-  const userVisibilityClause = buildUserVisibilityClause(normalizedUserKeys, queryParams);
-  // Detect optional columns before building WHERE clauses to avoid SQL errors
-  const hasProcessDesc = await hasTableColumn('PROCESSOS', 'desc_iden');
-  const hasInstDesc = await hasTableColumn('INSTANCIAS_PROCESSO', 'desc_iden');
-  const hasProcessCodigo = await hasTableColumn('PROCESSOS', 'codigo');
+  const rows = await Tarefas.findAll({
+    attributes: [
+      'id', 'nome_etapa', 'status', 'responsavel', 'sla_horas',
+      ['elemento_id', 'element_id'], 'versao_processo_id',
+      ['dt_criacao', 'created_at'], ['iniciado_em', 'started_at'], ['concluido_em', 'completed_at'], 'instancia_processo_id',
+      [col('processo.nome'), 'processo_nome'],
+      [col('instancia.solicitante'), 'solicitante'],
+      [col('instancia.identificador'), 'identificador'],
+      descricaoIdentificador,
+    ],
+    include: juncoes,
+    where: filtro,
+    order: [['dt_criacao', 'DESC'], ['id', 'DESC']],
+    ...paginar(safePage, safePageSize),
+    raw: true,
+  });
 
-  let processNameClause = '(:processName IS NULL OR p.nome LIKE :processNameLike)';
-  if (hasProcessCodigo) {
-    processNameClause = '(:processName IS NULL OR (p.nome LIKE :processNameLike OR p.codigo LIKE :processNameLike))';
-  }
-
-  const baseFromWhere = `
-      FROM tarefas t
-      JOIN processos p ON p.id = t.processo_id
-      JOIN instancias_processo i ON i.id = t.instancia_processo_id
-      WHERE (:status IS NULL OR t.status = :status)
-       AND (:processoId IS NULL OR t.processo_id = :processoId)
-       AND ${processNameClause}
-       AND (:instanciaId IS NULL OR t.instancia_processo_id = :instanciaId)
-       AND (:identificador IS NULL OR i.identificador LIKE :identificadorLike)
-       AND (:startDate IS NULL OR t.dt_criacao >= :startDate)
-       AND (:endDate IS NULL OR t.dt_criacao < DATEADD(day, 1, :endDate))
-       AND (:responsavel IS NULL OR LOWER(LTRIM(RTRIM(ISNULL(t.responsavel, '')))) = :responsavel)
-       ${userVisibilityClause}
-       AND (
-         t.nome_etapa LIKE :likeSearch
-         OR p.nome LIKE :likeSearch
-         OR i.solicitante LIKE :likeSearch
-       )`;
-  
-
-  let descSelect = '';
-  if (hasProcessDesc && hasInstDesc) {
-    descSelect = ', COALESCE(p.desc_iden, i.desc_iden) AS processo_desc_iden';
-  } else if (hasProcessDesc) {
-    descSelect = ', p.desc_iden AS processo_desc_iden';
-  } else if (hasInstDesc) {
-    descSelect = ', i.desc_iden AS processo_desc_iden';
-  }
-
-  const rows = await db.query(
-      `SELECT t.id, t.nome_etapa, t.status,
-        CASE WHEN LOWER(LTRIM(RTRIM(ISNULL(t.responsavel, '')))) = 'any' THEN '' ELSE ISNULL(t.responsavel, '') END AS responsavel,
-        t.sla_horas,
-        t.elemento_id AS element_id, t.versao_processo_id,
-            t.dt_criacao AS created_at, t.iniciado_em AS started_at, t.concluido_em AS completed_at, t.instancia_processo_id,
-          p.nome AS processo_nome, i.solicitante, i.identificador${descSelect}
-     ${baseFromWhere}
-     ORDER BY t.dt_criacao DESC
-     OFFSET :offset ROWS FETCH NEXT :limit ROWS ONLY`,
-    queryParams
-  );
-
-  const countRows = await db.query(
-    `SELECT COUNT(*) AS total
-     ${baseFromWhere}`,
-    queryParams
-  );
+  const total = await Tarefas.count({ include: juncoes, where: filtro });
 
   return {
-    data: rows,
-    total: countRows[0] ? countRows[0].total : 0,
+    data: rows.map(comResponsavelExibido),
+    total,
     page: safePage,
     pageSize: safePageSize,
   };
 }
 
 async function updateTaskStatus(taskId, status) {
-  await db.query(
-    `UPDATE tarefas
-     SET status = :status,
-         iniciado_em = CASE WHEN :status = 'EM_ANDAMENTO' AND iniciado_em IS NULL THEN NOW() ELSE iniciado_em END,
-         concluido_em = CASE WHEN :status = 'CONCLUIDA' THEN NOW() ELSE concluido_em END,
-         dt_atualizacao = NOW()
-     WHERE id = :taskId`,
-    { taskId, status }
-  );
+  const tarefa = await Tarefas.findOne({ attributes: ['iniciado_em', 'concluido_em'], where: { id: taskId }, raw: true });
+  if (!tarefa) return;
+  const agora = new Date();
+  await Tarefas.update({
+    status,
+    iniciado_em: status === 'EM_ANDAMENTO' && !tarefa.iniciado_em ? agora : tarefa.iniciado_em,
+    concluido_em: status === 'CONCLUIDA' ? agora : tarefa.concluido_em,
+    dt_atualizacao: agora,
+  }, { where: { id: taskId } });
 }
 
 async function completeTask({ taskId, action, observacao, responseJson, user }) {
-  await db.query(
-    `UPDATE tarefas
-     SET status = 'CONCLUIDA', acao_final = :action, observacao_final = :observacao,
-         resposta_json = :responseJson, concluido_por = :user, concluido_em = NOW(),
-         iniciado_em = CASE WHEN iniciado_em IS NULL THEN NOW() ELSE iniciado_em END,
-         atualizado_por = :user, dt_atualizacao = NOW()
-     WHERE id = :taskId`,
-    { taskId, action, observacao, responseJson, user }
-  );
+  const tarefa = await Tarefas.findOne({ attributes: ['iniciado_em'], where: { id: taskId }, raw: true });
+  if (!tarefa) return;
+  const agora = new Date();
+  await Tarefas.update({
+    status: 'CONCLUIDA',
+    acao_final: action,
+    observacao_final: observacao,
+    resposta_json: responseJson,
+    concluido_por: user,
+    concluido_em: agora,
+    iniciado_em: tarefa.iniciado_em || agora,
+    atualizado_por: user,
+    dt_atualizacao: agora,
+  }, { where: { id: taskId } });
 }
 
 async function saveTaskDraft({ taskId, observacao, responseJson, user }) {
-  await db.query(
-    `UPDATE tarefas
-     SET status = CASE WHEN status = 'MINHAS_TAREFAS' THEN 'EM_ANDAMENTO' ELSE status END,
-         observacao_final = :observacao,
-         resposta_json = :responseJson,
-         iniciado_em = CASE WHEN iniciado_em IS NULL THEN NOW() ELSE iniciado_em END,
-         atualizado_por = :user,
-         dt_atualizacao = NOW()
-     WHERE id = :taskId`,
-    { taskId, observacao, responseJson, user }
-  );
+  const tarefa = await Tarefas.findOne({ attributes: ['status', 'iniciado_em'], where: { id: taskId }, raw: true });
+  if (!tarefa) return;
+  const agora = new Date();
+  await Tarefas.update({
+    status: tarefa.status === 'MINHAS_TAREFAS' ? 'EM_ANDAMENTO' : tarefa.status,
+    observacao_final: observacao,
+    resposta_json: responseJson,
+    iniciado_em: tarefa.iniciado_em || agora,
+    atualizado_por: user,
+    dt_atualizacao: agora,
+  }, { where: { id: taskId } });
 }
 
 async function findOpenTasksByInstance(instanciaId) {
-  return db.query(
-    `SELECT *
-     FROM tarefas
-     WHERE instancia_processo_id = :instanciaId
-       AND status IN ('MINHAS_TAREFAS', 'EM_ANDAMENTO')`,
-    { instanciaId }
-  );
+  return Tarefas.findAll({
+    where: { instancia_processo_id: instanciaId, status: { [Op.in]: ['MINHAS_TAREFAS', 'EM_ANDAMENTO'] } },
+    order: [['id', 'ASC']],
+    raw: true,
+  });
 }
 
 async function listTasksByInstance(instanciaId) {
-  return db.query(
-    `SELECT t.id, t.elemento_id AS element_id, t.nome_etapa,
-            CASE WHEN LOWER(LTRIM(RTRIM(ISNULL(t.responsavel, '')))) = 'any' THEN '' ELSE ISNULL(t.responsavel, '') END AS responsavel,
-            t.sla_horas,
-            t.status, t.acao_final, t.observacao_final,
-            t.iniciado_em AS started_at, t.concluido_em AS completed_at,
-            t.concluido_por AS completed_by, t.dt_criacao AS created_at
-     FROM tarefas t
-     WHERE t.instancia_processo_id = :instanciaId
-     ORDER BY t.dt_criacao ASC`,
-    { instanciaId }
-  );
+  const rows = await Tarefas.findAll({
+    attributes: [
+      'id', ['elemento_id', 'element_id'], 'nome_etapa', 'responsavel', 'sla_horas',
+      'status', 'acao_final', 'observacao_final',
+      ['iniciado_em', 'started_at'], ['concluido_em', 'completed_at'],
+      ['concluido_por', 'completed_by'], ['dt_criacao', 'created_at'],
+    ],
+    where: { instancia_processo_id: instanciaId },
+    order: [['dt_criacao', 'ASC'], ['id', 'ASC']],
+    raw: true,
+  });
+  return rows.map(comResponsavelExibido);
 }
 
 module.exports = {

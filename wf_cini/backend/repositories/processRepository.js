@@ -1,302 +1,219 @@
-const db = require('../models/db');
+const {
+  Processos, VersoesProcesso, InstanciasProcesso, Formularios, Tarefas, HistoricoFluxo,
+} = require('../../models');
+const {
+  Op, maiusculo, contem, igualSemCaixa, where, paginar, idInserido,
+} = require('../../database/consultas');
 
-const _columnCache = {};
-
-async function hasProcessColumn(columnName) {
-  if (_columnCache[columnName] !== undefined) return _columnCache[columnName];
-  try {
-    const rows = await db.query(
-      `SELECT COUNT(*) AS cnt FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'PROCESSOS' AND COLUMN_NAME = :columnName`,
-      { columnName }
-    );
-    const exists = rows && rows[0] && Number(rows[0].cnt || 0) > 0;
-    _columnCache[columnName] = exists;
-    return exists;
-  } catch (err) {
-    _columnCache[columnName] = false;
-    return false;
+function filtroProcessos(search, createdBy) {
+  const condicoes = [];
+  if (search) condicoes.push({ [Op.or]: [contem('Processos.nome', search), contem('Processos.descricao', search)] });
+  if (createdBy !== null && createdBy !== undefined) {
+    condicoes.push(where(maiusculo('Processos.criado_por'), String(createdBy).trim().toUpperCase()));
   }
+  return { [Op.and]: condicoes };
 }
 
 async function listProcesses({ page = 1, pageSize = 10, search = '', createdBy = null }) {
   const safePage = Math.max(1, Number(page) || 1);
   const safePageSize = Math.max(1, Number(pageSize) || 10);
-  const offset = (safePage - 1) * safePageSize;
-  const likeSearch = `%${search || ''}%`;
+  const filtro = filtroProcessos(search, createdBy);
 
-  const rows = await db.query(
-    `SELECT p.id, p.nome, p.descricao, p.status,
-            p.usa_identificador, p.tipo_identificador,
-            p.criado_por AS created_by, p.dt_criacao AS created_at,
-            v.versao, v.status AS versao_status, v.id AS versao_id,
-            i.id AS latest_instance_id,
-            i.status AS latest_instance_status,
-            i.elemento_atual_id AS latest_current_element_id,
-            i.versao_processo_id AS latest_instance_version_id,
-            i.iniciado_em AS latest_started_at,
-            p.id AS codigo
-     FROM processos p
-     LEFT JOIN versoes_processo v
-       ON v.processo_id = p.id
-      AND v.id = (
-          SELECT TOP 1 vv.id
-          FROM versoes_processo vv
-          WHERE vv.processo_id = p.id
-          ORDER BY vv.versao DESC
-      )
-        LEFT JOIN instancias_processo i
-         ON i.id = (
-           SELECT TOP 1 ii.id
-           FROM instancias_processo ii
-           WHERE ii.processo_id = p.id
-           ORDER BY ii.dt_criacao DESC
-         )
-    WHERE (p.nome LIKE :likeSearch OR p.descricao LIKE :likeSearch)
-       AND (:createdBy IS NULL OR UPPER(LTRIM(RTRIM(ISNULL(p.criado_por, '')))) = UPPER(LTRIM(RTRIM(ISNULL(:createdBy, '')))))
-     ORDER BY p.dt_criacao DESC
-        OFFSET :offset ROWS FETCH NEXT :limit ROWS ONLY`,
-       { likeSearch, createdBy, limit: safePageSize, offset }
-  );
+  const processos = await Processos.findAll({
+    attributes: ['id', 'nome', 'descricao', 'status', 'usa_identificador', 'tipo_identificador', 'criado_por', 'dt_criacao'],
+    where: filtro,
+    order: [['dt_criacao', 'DESC'], ['id', 'DESC']],
+    ...paginar(safePage, safePageSize),
+    raw: true,
+  });
 
-  const countRows = await db.query(
-    `SELECT COUNT(*) AS total
-     FROM processos p
-     WHERE (p.nome LIKE :likeSearch OR p.descricao LIKE :likeSearch)
-       AND (:createdBy IS NULL OR UPPER(LTRIM(RTRIM(ISNULL(p.criado_por, '')))) = UPPER(LTRIM(RTRIM(ISNULL(:createdBy, '')))))`,
-    { likeSearch, createdBy }
-  );
+  const rows = [];
+  for (const p of processos) {
+    const versao = await VersoesProcesso.findOne({
+      attributes: ['id', 'versao', 'status'],
+      where: { processo_id: p.id },
+      order: [['versao', 'DESC'], ['id', 'DESC']],
+      raw: true,
+    });
+    const instancia = await InstanciasProcesso.findOne({
+      attributes: ['id', 'status', 'elemento_atual_id', 'versao_processo_id', 'iniciado_em'],
+      where: { processo_id: p.id },
+      order: [['dt_criacao', 'DESC'], ['id', 'DESC']],
+      raw: true,
+    });
+    rows.push({
+      id: p.id,
+      nome: p.nome,
+      descricao: p.descricao,
+      status: p.status,
+      usa_identificador: p.usa_identificador,
+      tipo_identificador: p.tipo_identificador,
+      created_by: p.criado_por,
+      created_at: p.dt_criacao,
+      versao: versao ? versao.versao : null,
+      versao_status: versao ? versao.status : null,
+      versao_id: versao ? versao.id : null,
+      latest_instance_id: instancia ? instancia.id : null,
+      latest_instance_status: instancia ? instancia.status : null,
+      latest_current_element_id: instancia ? instancia.elemento_atual_id : null,
+      latest_instance_version_id: instancia ? instancia.versao_processo_id : null,
+      latest_started_at: instancia ? instancia.iniciado_em : null,
+      codigo: p.id,
+    });
+  }
+
+  const total = await Processos.count({ where: filtro });
 
   return {
     data: rows,
     page: safePage,
     pageSize: safePageSize,
-    total: countRows[0] ? countRows[0].total : 0,
+    total,
   };
 }
 
-async function createProcess({ nome, codigo, descricao, criadoPor, usaIdentificador = false, tipoIdentificador = null, descIden = null }) {
-  const hasDesc = await hasProcessColumn('desc_iden');
-  const hasIdentificador = await hasProcessColumn('identificador');
-  const hasCodigo = !hasIdentificador && await hasProcessColumn('codigo');
-
-  const fields = [];
-  const values = [];
-  const params = { nome, descricao, usaIdentificador, tipoIdentificador, criadoPor };
-
-  if (hasIdentificador) {
-    fields.push('identificador');
-    values.push(':codigo');
-    params.codigo = codigo;
-  } else if (hasCodigo) {
-    fields.push('codigo');
-    values.push(':codigo');
-    params.codigo = codigo;
-  }
-
-  if (hasDesc) {
-    fields.push('desc_iden');
-    values.push(':descIden');
-    params.descIden = descIden;
-  }
-
-  // common fields
-  fields.push('nome', 'descricao', 'status', 'usa_identificador', 'tipo_identificador', 'criado_por', 'dt_criacao', 'dt_atualizacao');
-  values.push(':nome', ':descricao', "'ATIVO'", ':usaIdentificador', ':tipoIdentificador', ':criadoPor', 'NOW()', 'NOW()');
-
-  const sql = `INSERT INTO processos (${fields.join(', ')}) VALUES (${values.join(', ')})`;
-  const result = await db.query(sql, params);
-  return result.insertId;
+async function createProcess({ nome, descricao, criadoPor, usaIdentificador = false, tipoIdentificador = null, descIden = null }) {
+  const agora = new Date();
+  const registro = await Processos.create({
+    desc_iden: descIden,
+    nome,
+    descricao,
+    status: 'ATIVO',
+    usa_identificador: usaIdentificador,
+    tipo_identificador: tipoIdentificador,
+    criado_por: criadoPor,
+    dt_criacao: agora,
+    dt_atualizacao: agora,
+  });
+  return idInserido(registro);
 }
 
 async function getProcessById(id) {
-  const includeDesc = await hasProcessColumn('desc_iden');
-  const codeColIdent = await hasProcessColumn('identificador');
-  const codeColCodigo = !codeColIdent && await hasProcessColumn('codigo');
-
-  let selectSql = `SELECT id, nome, descricao, status,
-            usa_identificador, tipo_identificador,
-            criado_por AS created_by, atualizado_por AS updated_by,
-            dt_criacao AS created_at, dt_atualizacao AS updated_at`;
-  if (includeDesc) selectSql += `, desc_iden`;
-  if (codeColIdent) selectSql += `, identificador AS codigo`;
-  else if (codeColCodigo) selectSql += `, codigo AS codigo`;
-  else selectSql += `, id AS codigo`;
-
-  selectSql += ` FROM processos WHERE id = :id`;
-
-  const rows = await db.query(selectSql, { id });
-  return rows[0] || null;
+  const row = await Processos.findOne({
+    attributes: [
+      'id', 'nome', 'descricao', 'status', 'usa_identificador', 'tipo_identificador',
+      ['criado_por', 'created_by'], ['atualizado_por', 'updated_by'],
+      ['dt_criacao', 'created_at'], ['dt_atualizacao', 'updated_at'], 'desc_iden',
+    ],
+    where: { id },
+    raw: true,
+  });
+  return row ? { ...row, codigo: row.id } : null;
 }
 
 async function updateProcess({ id, nome, descricao, status, usaIdentificador, tipoIdentificador, updatedBy, descIden = null }) {
-  const includeDesc = await hasProcessColumn('desc_iden');
-
-  const sets = [
-    'nome = :nome',
-    'descricao = :descricao',
-    'status = :status',
-    'usa_identificador = :usaIdentificador',
-    'tipo_identificador = :tipoIdentificador',
-    'atualizado_por = :updatedBy',
-    'dt_atualizacao = NOW()'
-  ];
-
-  const params = { id, nome, descricao, status, usaIdentificador, tipoIdentificador, updatedBy };
-  if (includeDesc) {
-    sets.splice(5, 0, 'desc_iden = :descIden');
-    params.descIden = descIden;
-  }
-
-  const sql = `UPDATE processos SET ${sets.join(', ')} WHERE id = :id`;
-  await db.query(sql, params);
+  await Processos.update({
+    nome,
+    descricao,
+    status,
+    usa_identificador: usaIdentificador,
+    tipo_identificador: tipoIdentificador,
+    desc_iden: descIden,
+    atualizado_por: updatedBy,
+    dt_atualizacao: new Date(),
+  }, { where: { id } });
 }
 
 async function listVersionsByProcess(processoId) {
-  return db.query(
-    `SELECT id, processo_id, versao, status, publicado_em, observacao_publicacao,
-            xml_bpmn AS bpmn_xml, propriedades_json, dt_criacao AS created_at, dt_atualizacao AS updated_at
-     FROM versoes_processo
-     WHERE processo_id = :processoId
-     ORDER BY versao DESC`,
-    { processoId }
-  );
+  return VersoesProcesso.findAll({
+    attributes: [
+      'id', 'processo_id', 'versao', 'status', 'publicado_em', 'observacao_publicacao',
+      ['xml_bpmn', 'bpmn_xml'], 'propriedades_json', ['dt_criacao', 'created_at'], ['dt_atualizacao', 'updated_at'],
+    ],
+    where: { processo_id: processoId },
+    order: [['versao', 'DESC'], ['id', 'DESC']],
+    raw: true,
+  });
 }
 
 async function getVersionById(versionId) {
-  const rows = await db.query(
-    `SELECT id, processo_id, versao, status, xml_bpmn AS bpmn_xml, propriedades_json, publicado_em, dt_criacao AS created_at, dt_atualizacao AS updated_at
-     FROM versoes_processo
-     WHERE id = :versionId`,
-    { versionId }
-  );
-  return rows[0] || null;
+  return VersoesProcesso.findOne({
+    attributes: [
+      'id', 'processo_id', 'versao', 'status', ['xml_bpmn', 'bpmn_xml'], 'propriedades_json', 'publicado_em',
+      ['dt_criacao', 'created_at'], ['dt_atualizacao', 'updated_at'],
+    ],
+    where: { id: versionId },
+    raw: true,
+  });
 }
 
 async function getLatestVersionNumber(processoId) {
-  const rows = await db.query(
-    `SELECT MAX(versao) AS ultima_versao
-     FROM versoes_processo
-     WHERE processo_id = :processoId`,
-    { processoId }
-  );
-  return (rows[0] && rows[0].ultima_versao) || 0;
+  const ultima = await VersoesProcesso.max('versao', { where: { processo_id: processoId } });
+  return ultima || 0;
 }
 
 async function createVersion({ processoId, versao, bpmnXml, propriedadesJson, createdBy }) {
-  const result = await db.query(
-    `INSERT INTO versoes_processo
-      (processo_id, versao, status, xml_bpmn, propriedades_json, criado_por, dt_criacao, dt_atualizacao)
-     VALUES
-      (:processoId, :versao, 'RASCUNHO', :bpmnXml, :propriedadesJson, :createdBy, NOW(), NOW())`,
-    { processoId, versao, bpmnXml, propriedadesJson, createdBy }
-  );
-  return result.insertId;
+  const agora = new Date();
+  const registro = await VersoesProcesso.create({
+    processo_id: processoId,
+    versao,
+    status: 'RASCUNHO',
+    xml_bpmn: bpmnXml,
+    propriedades_json: propriedadesJson,
+    criado_por: createdBy,
+    dt_criacao: agora,
+    dt_atualizacao: agora,
+  });
+  return idInserido(registro);
 }
 
 async function publishVersion({ processoId, versaoId, observacao, publishedBy }) {
-  await db.query(
-    `UPDATE versoes_processo
-     SET status = 'ARQUIVADA', dt_atualizacao = NOW()
-     WHERE processo_id = :processoId
-       AND status = 'PUBLICADA'`,
-    { processoId }
+  await VersoesProcesso.update(
+    { status: 'ARQUIVADA', dt_atualizacao: new Date() },
+    { where: { processo_id: processoId, status: 'PUBLICADA' } }
   );
 
-  await db.query(
-    `UPDATE versoes_processo
-     SET status = 'PUBLICADA', publicado_em = NOW(), observacao_publicacao = :observacao,
-         publicado_por = :publishedBy, dt_atualizacao = NOW()
-     WHERE id = :versaoId
-       AND processo_id = :processoId`,
-    { processoId, versaoId, observacao, publishedBy }
-  );
+  const agora = new Date();
+  await VersoesProcesso.update({
+    status: 'PUBLICADA',
+    publicado_em: agora,
+    observacao_publicacao: observacao,
+    publicado_por: publishedBy,
+    dt_atualizacao: agora,
+  }, { where: { id: versaoId, processo_id: processoId } });
 }
 
 async function getPublishedVersion(processoId) {
-  const rows = await db.query(
-    `SELECT id, processo_id, versao, xml_bpmn AS bpmn_xml, propriedades_json
-     FROM versoes_processo
-     WHERE processo_id = :processoId AND status = 'PUBLICADA'
-     ORDER BY versao DESC
-     OFFSET 0 ROWS FETCH NEXT 1 ROWS ONLY`,
-    { processoId }
-  );
-  return rows[0] || null;
+  return VersoesProcesso.findOne({
+    attributes: ['id', 'processo_id', 'versao', ['xml_bpmn', 'bpmn_xml'], 'propriedades_json'],
+    where: { processo_id: processoId, status: 'PUBLICADA' },
+    order: [['versao', 'DESC'], ['id', 'DESC']],
+    raw: true,
+  });
 }
+
+const ATRIBUTOS_POR_CODIGO = [
+  'id', 'nome', 'descricao', 'status', 'usa_identificador', 'tipo_identificador',
+  ['criado_por', 'created_by'], ['dt_criacao', 'created_at'], ['dt_atualizacao', 'updated_at'],
+];
 
 async function getProcessByCodigo(codigo) {
   if (/^\d+$/.test(String(codigo))) {
-    const rows = await db.query(
-      `SELECT id, nome, descricao, status, usa_identificador, tipo_identificador,
-              criado_por AS created_by, dt_criacao AS created_at, dt_atualizacao AS updated_at
-       FROM processos
-       WHERE id = :codigo`,
-      { codigo: Number(codigo) }
-    );
-    if (rows && rows[0]) return rows[0];
+    const row = await Processos.findOne({ attributes: ATRIBUTOS_POR_CODIGO, where: { id: Number(codigo) }, raw: true });
+    if (row) return row;
   }
 
-  const rows = await db.query(
-    `SELECT id, nome, descricao, status, usa_identificador, tipo_identificador,
-            criado_por AS created_by, dt_criacao AS created_at, dt_atualizacao AS updated_at
-     FROM processos
-     WHERE nome = :codigo`,
-    { codigo }
-  );
-  return rows[0] || null;
+  return Processos.findOne({
+    attributes: ATRIBUTOS_POR_CODIGO,
+    where: igualSemCaixa('nome', codigo),
+    order: [['id', 'ASC']],
+    raw: true,
+  });
 }
 
 async function getProcessDeleteDependencies(processoId) {
-  const versionRows = await db.query(
-    `SELECT COUNT(*) AS total
-     FROM versoes_processo
-     WHERE processo_id = :processoId`,
-    { processoId }
-  );
-
-  const formRows = await db.query(
-    `SELECT COUNT(*) AS total
-     FROM formularios
-     WHERE processo_id = :processoId`,
-    { processoId }
-  );
-
-  const instanceRows = await db.query(
-    `SELECT COUNT(*) AS total
-     FROM instancias_processo
-     WHERE processo_id = :processoId`,
-    { processoId }
-  );
-
-  const taskRows = await db.query(
-    `SELECT COUNT(*) AS total
-     FROM tarefas
-     WHERE processo_id = :processoId`,
-    { processoId }
-  );
-
-  const historyRows = await db.query(
-    `SELECT COUNT(*) AS total
-     FROM historico_fluxo
-     WHERE processo_id = :processoId`,
-    { processoId }
-  );
-
+  const where = { processo_id: processoId };
   return {
-    versions: Number(versionRows[0] ? versionRows[0].total : 0),
-    forms: Number(formRows[0] ? formRows[0].total : 0),
-    instances: Number(instanceRows[0] ? instanceRows[0].total : 0),
-    tasks: Number(taskRows[0] ? taskRows[0].total : 0),
-    history: Number(historyRows[0] ? historyRows[0].total : 0),
+    versions: await VersoesProcesso.count({ where }),
+    forms: await Formularios.count({ where }),
+    instances: await InstanciasProcesso.count({ where }),
+    tasks: await Tarefas.count({ where }),
+    history: await HistoricoFluxo.count({ where }),
   };
 }
 
 async function deleteProcess(processoId) {
-  await db.query(
-    `DELETE FROM processos
-     WHERE id = :processoId`,
-    { processoId }
-  );
+  await Processos.destroy({ where: { id: processoId } });
 }
 
 module.exports = {

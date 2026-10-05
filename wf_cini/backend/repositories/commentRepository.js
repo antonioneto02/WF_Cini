@@ -1,48 +1,25 @@
-const db = require('../models/db');
+const { WfComentarios, Tarefas, Processos } = require('../../models');
+const {
+  Op, col, where, maiusculo, contem, idInserido,
+} = require('../../database/consultas');
 
-let schemaReady = false;
-let schemaPromise = null;
+async function ensureSchema() {}
 
-async function ensureSchema() {
-  if (schemaReady) return;
-  if (schemaPromise) return schemaPromise;
+const ATRIBUTOS = [
+  'id',
+  'processo_id',
+  'instancia_processo_id',
+  'tarefa_id',
+  'autor',
+  'mensagem',
+  'mencoes_json',
+  ['dt_criacao', 'created_at'],
+];
 
-  schemaPromise = db
-    .query(
-      `IF OBJECT_ID('dbo.WF_COMENTARIOS', 'U') IS NULL
-       BEGIN
-         CREATE TABLE dbo.WF_COMENTARIOS (
-           id BIGINT IDENTITY(1,1) PRIMARY KEY,
-           processo_id BIGINT NOT NULL,
-           instancia_processo_id BIGINT NOT NULL,
-           tarefa_id BIGINT NULL,
-           autor NVARCHAR(120) NOT NULL,
-           mensagem NVARCHAR(MAX) NOT NULL,
-           mencoes_json NVARCHAR(MAX) NULL,
-           status NVARCHAR(20) NOT NULL DEFAULT 'ATIVO',
-           dt_criacao DATETIME2 NOT NULL DEFAULT GETDATE(),
-           dt_atualizacao DATETIME2 NULL
-         );
-
-         CREATE INDEX idx_wf_comentarios_instancia
-           ON dbo.WF_COMENTARIOS(instancia_processo_id, dt_criacao DESC);
-
-         CREATE INDEX idx_wf_comentarios_tarefa
-           ON dbo.WF_COMENTARIOS(tarefa_id, dt_criacao DESC);
-
-         CREATE INDEX idx_wf_comentarios_autor
-           ON dbo.WF_COMENTARIOS(autor, dt_criacao DESC);
-       END`
-    )
-    .then(() => {
-      schemaReady = true;
-    })
-    .finally(() => {
-      schemaPromise = null;
-    });
-
-  return schemaPromise;
-}
+const juncoes = [
+  { model: Tarefas, as: 'tarefa', attributes: [], required: false },
+  { model: Processos, as: 'processo', attributes: [], required: false },
+];
 
 async function createComment({
   processoId,
@@ -52,90 +29,59 @@ async function createComment({
   mensagem,
   mencoesJson = null,
 }) {
-  await ensureSchema();
+  const agora = new Date();
+  const registro = await WfComentarios.create({
+    processo_id: processoId,
+    instancia_processo_id: instanciaId,
+    tarefa_id: tarefaId,
+    autor,
+    mensagem,
+    mencoes_json: mencoesJson,
+    dt_criacao: agora,
+    dt_atualizacao: agora,
+  });
 
-  const result = await db.query(
-    `INSERT INTO WF_COMENTARIOS
-      (processo_id, instancia_processo_id, tarefa_id, autor, mensagem, mencoes_json, dt_criacao, dt_atualizacao)
-     VALUES
-      (:processoId, :instanciaId, :tarefaId, :autor, :mensagem, :mencoesJson, NOW(), NOW())`,
-    {
-      processoId,
-      instanciaId,
-      tarefaId,
-      autor,
-      mensagem,
-      mencoesJson,
-    }
-  );
-
-  return result.insertId;
+  return idInserido(registro);
 }
 
 async function listByScope({ instanciaId = null, tarefaId = null, limit = 120 }) {
-  await ensureSchema();
-
   const safeLimit = Math.max(1, Number(limit) || 120);
+  const filtro = { status: 'ATIVO' };
+  if (instanciaId !== null && instanciaId !== undefined) filtro.instancia_processo_id = instanciaId;
+  if (tarefaId !== null && tarefaId !== undefined) filtro.tarefa_id = tarefaId;
 
-  return db.query(
-    `SELECT TOP (:limit)
-            c.id,
-            c.processo_id,
-            c.instancia_processo_id,
-            c.tarefa_id,
-            c.autor,
-            c.mensagem,
-            c.mencoes_json,
-            c.dt_criacao AS created_at,
-            t.nome_etapa,
-            p.nome AS processo_nome
-     FROM WF_COMENTARIOS c
-     LEFT JOIN TAREFAS t ON t.id = c.tarefa_id
-     LEFT JOIN PROCESSOS p ON p.id = c.processo_id
-     WHERE c.status = 'ATIVO'
-       AND (:instanciaId IS NULL OR c.instancia_processo_id = :instanciaId)
-       AND (:tarefaId IS NULL OR c.tarefa_id = :tarefaId)
-     ORDER BY c.dt_criacao DESC`,
-    {
-      limit: safeLimit,
-      instanciaId,
-      tarefaId,
-    }
-  );
+  return WfComentarios.findAll({
+    attributes: [...ATRIBUTOS, [col('tarefa.nome_etapa'), 'nome_etapa'], [col('processo.nome'), 'processo_nome']],
+    include: juncoes,
+    where: filtro,
+    order: [['dt_criacao', 'DESC'], ['id', 'DESC']],
+    limit: safeLimit,
+    raw: true,
+  });
 }
 
 async function listRecentByUserContext({ usuario, limit = 10 }) {
-  await ensureSchema();
-
   const safeLimit = Math.max(1, Number(limit) || 10);
+  const usuarioNormalizado = String(usuario || '').trim().toUpperCase();
 
-  return db.query(
-    `SELECT TOP (:limit)
-            c.id,
-            c.processo_id,
-            c.instancia_processo_id,
-            c.tarefa_id,
-            c.autor,
-            c.mensagem,
-            c.mencoes_json,
-            c.dt_criacao AS created_at,
-            p.nome AS processo_nome,
-            t.nome_etapa
-     FROM WF_COMENTARIOS c
-     LEFT JOIN PROCESSOS p ON p.id = c.processo_id
-     LEFT JOIN TAREFAS t ON t.id = c.tarefa_id
-     WHERE c.status = 'ATIVO'
-       AND (
-         UPPER(LTRIM(RTRIM(c.autor))) = UPPER(LTRIM(RTRIM(:usuario)))
-         OR c.mencoes_json LIKE :mentionLike
-       )
-     ORDER BY c.dt_criacao DESC`,
-    {
-      limit: safeLimit,
-      usuario,
-      mentionLike: `%${String(usuario || '').trim().toUpperCase()}%`,
-    }
-  );
+  return WfComentarios.findAll({
+    attributes: [...ATRIBUTOS, [col('processo.nome'), 'processo_nome'], [col('tarefa.nome_etapa'), 'nome_etapa']],
+    include: juncoes,
+    where: {
+      [Op.and]: [
+        { status: 'ATIVO' },
+        {
+          [Op.or]: [
+            where(maiusculo('WfComentarios.autor'), usuarioNormalizado),
+            contem('WfComentarios.mencoes_json', usuarioNormalizado),
+          ],
+        },
+      ],
+    },
+    order: [['dt_criacao', 'DESC'], ['id', 'DESC']],
+    limit: safeLimit,
+    raw: true,
+  });
 }
 
 module.exports = {

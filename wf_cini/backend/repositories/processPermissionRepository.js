@@ -1,8 +1,7 @@
-const db = require('../models/db');
-
-function isMissingTableError(error) {
-  return Boolean(error && error.message && /Invalid object name/i.test(error.message));
-}
+const { ProcessoPermissoes } = require('../../models');
+const {
+  Op, where, minusculo, tabelaInexistente,
+} = require('../../database/consultas');
 
 function normalizeUser(value) {
   return String(value || '').trim().toLowerCase();
@@ -23,57 +22,55 @@ function normalizeRows(rows) {
   }));
 }
 
+const ATRIBUTOS = [
+  'id', 'processo_id', 'usuario',
+  ['pode_visualizar', 'can_view'],
+  ['pode_editar', 'can_edit'],
+  ['pode_modelar', 'can_model'],
+  ['pode_executar', 'can_execute'],
+  ['pode_administrar', 'can_admin'],
+  'criado_por', 'dt_criacao',
+];
+
 async function listPermissionsByProcess(processoId) {
   try {
-    const rows = await db.query(
-      `SELECT id, processo_id, usuario,
-              pode_visualizar AS can_view,
-              pode_editar AS can_edit,
-              pode_modelar AS can_model,
-              pode_executar AS can_execute,
-              pode_administrar AS can_admin,
-              criado_por, dt_criacao
-       FROM processo_permissoes
-       WHERE processo_id = :processoId
-       ORDER BY usuario ASC`,
-      { processoId }
-    );
+    const rows = await ProcessoPermissoes.findAll({
+      attributes: ATRIBUTOS,
+      where: { processo_id: processoId },
+      raw: true,
+    });
 
-    return normalizeRows(rows);
+    const ordenadas = rows
+      .map((row, indice) => ({ row, chave: String(row.usuario).toLowerCase(), indice }))
+      .sort((a, b) => (a.chave < b.chave ? -1 : a.chave > b.chave ? 1 : a.indice - b.indice))
+      .map(({ row }) => row);
+
+    return normalizeRows(ordenadas);
   } catch (error) {
-    if (isMissingTableError(error)) return [];
+    if (tabelaInexistente(error)) return [];
     throw error;
   }
 }
 
 async function replacePermissions(processoId, permissions, actor) {
   try {
-    await db.query(
-      `DELETE FROM processo_permissoes
-       WHERE processo_id = :processoId`,
-      { processoId }
-    );
+    await ProcessoPermissoes.destroy({ where: { processo_id: processoId } });
 
     for (const permission of permissions || []) {
-      await db.query(
-        `INSERT INTO processo_permissoes
-          (processo_id, usuario, pode_visualizar, pode_editar, pode_modelar, pode_executar, pode_administrar, criado_por, dt_criacao)
-         VALUES
-          (:processoId, :usuario, :canView, :canEdit, :canModel, :canExecute, :canAdmin, :actor, NOW())`,
-        {
-          processoId,
-          usuario: normalizeUser(permission.usuario),
-          canView: permission.can_view ? 1 : 0,
-          canEdit: permission.can_edit ? 1 : 0,
-          canModel: permission.can_model ? 1 : 0,
-          canExecute: permission.can_execute ? 1 : 0,
-          canAdmin: permission.can_admin ? 1 : 0,
-          actor,
-        }
-      );
+      await ProcessoPermissoes.create({
+        processo_id: processoId,
+        usuario: normalizeUser(permission.usuario),
+        pode_visualizar: Boolean(permission.can_view),
+        pode_editar: Boolean(permission.can_edit),
+        pode_modelar: Boolean(permission.can_model),
+        pode_executar: Boolean(permission.can_execute),
+        pode_administrar: Boolean(permission.can_admin),
+        criado_por: actor,
+        dt_criacao: new Date(),
+      });
     }
   } catch (error) {
-    if (isMissingTableError(error)) return;
+    if (tabelaInexistente(error)) return;
     throw error;
   }
 }
@@ -83,28 +80,16 @@ async function getPermissionForUser(processoId, user) {
   if (!normalizedUser) return null;
 
   try {
-    const rows = await db.query(
-      `SELECT TOP (1)
-              id, processo_id, usuario,
-              pode_visualizar AS can_view,
-              pode_editar AS can_edit,
-              pode_modelar AS can_model,
-              pode_executar AS can_execute,
-              pode_administrar AS can_admin,
-              criado_por, dt_criacao
-       FROM processo_permissoes
-       WHERE processo_id = :processoId
-         AND LOWER(LTRIM(RTRIM(ISNULL(usuario, '')))) = :usuario`,
-      {
-        processoId,
-        usuario: normalizedUser,
-      }
-    );
+    const row = await ProcessoPermissoes.findOne({
+      attributes: ATRIBUTOS,
+      where: { [Op.and]: [{ processo_id: processoId }, where(minusculo('usuario'), normalizedUser)] },
+      order: [['id', 'ASC']],
+      raw: true,
+    });
 
-    const mapped = normalizeRows(rows);
-    return mapped[0] || null;
+    return row ? normalizeRows([row])[0] : null;
   } catch (error) {
-    if (isMissingTableError(error)) return null;
+    if (tabelaInexistente(error)) return null;
     throw error;
   }
 }
@@ -114,17 +99,16 @@ async function listVisibleProcessIds(user) {
   if (!normalizedUser) return [];
 
   try {
-    const rows = await db.query(
-      `SELECT DISTINCT processo_id
-       FROM processo_permissoes
-       WHERE LOWER(LTRIM(RTRIM(ISNULL(usuario, '')))) = :usuario
-         AND pode_visualizar = 1`,
-      { usuario: normalizedUser }
-    );
+    const rows = await ProcessoPermissoes.findAll({
+      attributes: ['processo_id'],
+      where: { [Op.and]: [where(minusculo('usuario'), normalizedUser), { pode_visualizar: true }] },
+      group: ['processo_id'],
+      raw: true,
+    });
 
     return rows.map((row) => Number(row.processo_id)).filter((id) => Number.isFinite(id));
   } catch (error) {
-    if (isMissingTableError(error)) return [];
+    if (tabelaInexistente(error)) return [];
     throw error;
   }
 }

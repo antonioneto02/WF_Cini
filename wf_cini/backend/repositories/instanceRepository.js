@@ -1,169 +1,117 @@
-const db = require('../models/db');
-
-const _instanceColumnCache = {};
-
-async function hasInstanceColumn(columnName) {
-  if (_instanceColumnCache[columnName] !== undefined) return _instanceColumnCache[columnName];
-  try {
-    const rows = await db.query(
-      `SELECT COUNT(*) AS cnt FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'INSTANCIAS_PROCESSO' AND COLUMN_NAME = :columnName`,
-      { columnName }
-    );
-    const exists = rows && rows[0] && Number(rows[0].cnt || 0) > 0;
-    _instanceColumnCache[columnName] = exists;
-    return exists;
-  } catch (err) {
-    _instanceColumnCache[columnName] = false;
-    return false;
-  }
-}
+const { InstanciasProcesso, Processos, VersoesProcesso } = require('../../models');
+const {
+  Op, col, contem, dataDoFiltro, paginar, idInserido,
+} = require('../../database/consultas');
 
 async function createInstance({ processoId, versaoId, solicitante, identificador = null, descIden = null, payloadJson, status = 'EM_ANDAMENTO', currentElementId = null }) {
-  const hasDesc = await hasInstanceColumn('desc_iden');
-
-  const fields = ['processo_id', 'versao_processo_id', 'solicitante', 'identificador'];
-  const values = [':processoId', ':versaoId', ':solicitante', ':identificador'];
-  const params = { processoId, versaoId, solicitante, identificador, payloadJson, status, currentElementId };
-
-  if (hasDesc) {
-    fields.push('desc_iden');
-    values.push(':descIden');
-    params.descIden = descIden;
-  }
-
-  // rest of fields
-  fields.push('dados_json', 'estado_execucao_json', 'status', 'elemento_atual_id', 'iniciado_em', 'dt_criacao', 'dt_atualizacao');
-  values.push(':payloadJson', "'{}'", ':status', ':currentElementId', 'NOW()', 'NOW()', 'NOW()');
-
-  const sql = `INSERT INTO instancias_processo (${fields.join(', ')}) VALUES (${values.join(', ')})`;
-  const result = await db.query(sql, params);
-  return result.insertId;
+  const agora = new Date();
+  const registro = await InstanciasProcesso.create({
+    processo_id: processoId,
+    versao_processo_id: versaoId,
+    solicitante,
+    identificador,
+    desc_iden: descIden,
+    dados_json: payloadJson,
+    estado_execucao_json: '{}',
+    status,
+    elemento_atual_id: currentElementId,
+    iniciado_em: agora,
+    dt_criacao: agora,
+    dt_atualizacao: agora,
+  });
+  return idInserido(registro);
 }
 
 async function getInstanceById(instanceId) {
-  const includeInstDesc = await hasInstanceColumn('desc_iden');
-
-  let selectSql = `SELECT i.id, i.processo_id, i.versao_processo_id, i.solicitante, i.identificador`;
-  if (includeInstDesc) selectSql += `, i.desc_iden`;
-  selectSql += `, i.dados_json AS payload_json, i.estado_execucao_json AS runtime_state_json,
-            i.elemento_atual_id AS current_element_id, i.status,
-            i.iniciado_em AS started_at, i.encerrado_em AS ended_at,
-            i.criado_por AS created_by, i.atualizado_por AS updated_by,
-            i.dt_criacao AS created_at, i.dt_atualizacao AS updated_at
-     FROM instancias_processo i
-     WHERE id = :instanceId`;
-
-  const rows = await db.query(selectSql, { instanceId });
-  return rows[0] || null;
+  return InstanciasProcesso.findOne({
+    attributes: [
+      'id', 'processo_id', 'versao_processo_id', 'solicitante', 'identificador', 'desc_iden',
+      ['dados_json', 'payload_json'], ['estado_execucao_json', 'runtime_state_json'],
+      ['elemento_atual_id', 'current_element_id'], 'status',
+      ['iniciado_em', 'started_at'], ['encerrado_em', 'ended_at'],
+      ['criado_por', 'created_by'], ['atualizado_por', 'updated_by'],
+      ['dt_criacao', 'created_at'], ['dt_atualizacao', 'updated_at'],
+    ],
+    where: { id: instanceId },
+    raw: true,
+  });
 }
 
 async function updateInstancePointer(instanceId, currentElementId) {
-  await db.query(
-    `UPDATE instancias_processo
-     SET elemento_atual_id = :currentElementId, dt_atualizacao = NOW()
-     WHERE id = :instanceId`,
-    { instanceId, currentElementId }
+  await InstanciasProcesso.update(
+    { elemento_atual_id: currentElementId, dt_atualizacao: new Date() },
+    { where: { id: instanceId } }
   );
 }
 
 async function updateRuntimeState(instanceId, runtimeStateJson) {
-  await db.query(
-    `UPDATE instancias_processo
-     SET estado_execucao_json = :runtimeStateJson, dt_atualizacao = NOW()
-     WHERE id = :instanceId`,
-    { instanceId, runtimeStateJson }
+  await InstanciasProcesso.update(
+    { estado_execucao_json: runtimeStateJson, dt_atualizacao: new Date() },
+    { where: { id: instanceId } }
   );
 }
 
 async function finishInstance(instanceId, finalStatus = 'CONCLUIDA') {
-  await db.query(
-    `UPDATE instancias_processo
-     SET status = :finalStatus, encerrado_em = NOW(), dt_atualizacao = NOW()
-     WHERE id = :instanceId`,
-    { instanceId, finalStatus }
+  const agora = new Date();
+  await InstanciasProcesso.update(
+    { status: finalStatus, encerrado_em: agora, dt_atualizacao: agora },
+    { where: { id: instanceId } }
   );
+}
+
+function filtroInstancias({ processoId, status, identificador, solicitante, startDate, endDate }) {
+  const condicoes = [];
+  if (processoId !== null && processoId !== undefined) condicoes.push({ processo_id: processoId });
+  if (status !== null && status !== undefined) condicoes.push({ status });
+  if (identificador) condicoes.push(contem('InstanciasProcesso.identificador', identificador));
+  if (solicitante) condicoes.push(contem('InstanciasProcesso.solicitante', solicitante));
+  if (startDate) condicoes.push({ iniciado_em: { [Op.gte]: dataDoFiltro(startDate) } });
+  if (endDate) condicoes.push({ iniciado_em: { [Op.lt]: dataDoFiltro(endDate, 1) } });
+  return { [Op.and]: condicoes };
 }
 
 async function listInstances({ page = 1, pageSize = 10, processoId = null, status = null, identificador = null, solicitante = null, startDate = null, endDate = null }) {
   const safePage = Math.max(1, Number(page) || 1);
   const safePageSize = Math.max(1, Number(pageSize) || 10);
-  const offset = (safePage - 1) * safePageSize;
-  let hasProcessDesc = false;
-  let hasInstDesc = false;
-  try {
-    const cols = await db.query(
-      `SELECT TABLE_NAME, COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE (TABLE_NAME = 'PROCESSOS' OR TABLE_NAME = 'INSTANCIAS_PROCESSO') AND COLUMN_NAME = 'desc_iden'`
-    );
-    (cols || []).forEach((r) => {
-      if (String(r.TABLE_NAME || '').toUpperCase() === 'PROCESSOS') hasProcessDesc = true;
-      if (String(r.TABLE_NAME || '').toUpperCase() === 'INSTANCIAS_PROCESSO') hasInstDesc = true;
-    });
-  } catch (_) {
-    hasProcessDesc = false;
-    hasInstDesc = false;
-  }
+  const filtro = filtroInstancias({ processoId, status, identificador, solicitante, startDate, endDate });
 
-  let selectSql = `SELECT i.id, i.processo_id, i.versao_processo_id, i.solicitante, i.identificador`;
-  if (hasInstDesc) selectSql += `, i.desc_iden AS instance_desc_iden`;
-  selectSql += `, i.dados_json AS payload_json, i.estado_execucao_json AS runtime_state_json,
-            i.elemento_atual_id AS current_element_id, i.status, i.iniciado_em AS started_at,
-            i.encerrado_em AS ended_at, i.dt_criacao AS created_at,
-            p.nome AS processo_nome`;
-  if (hasProcessDesc) selectSql += `, p.desc_iden AS processo_desc_iden`;
-  selectSql += `, v.versao
-     FROM instancias_processo i
-     JOIN processos p ON p.id = i.processo_id
-     JOIN versoes_processo v ON v.id = i.versao_processo_id
-      WHERE (:processoId IS NULL OR i.processo_id = :processoId)
-        AND (:status IS NULL OR i.status = :status)
-        AND (:identificador IS NULL OR i.identificador LIKE :identificadorLike)
-        AND (:solicitante IS NULL OR i.solicitante LIKE :solicitanteLike)
-        AND (:startDate IS NULL OR i.iniciado_em >= :startDate)
-        AND (:endDate IS NULL OR i.iniciado_em < DATEADD(day, 1, :endDate))
-      ORDER BY i.dt_criacao DESC
-      OFFSET :offset ROWS FETCH NEXT :limit ROWS ONLY`;
-
-  const rows = await db.query(selectSql, {
-    processoId,
-    status,
-    identificador,
-    solicitante,
-    startDate,
-    endDate,
-    identificadorLike: identificador ? `%${identificador}%` : null,
-    solicitanteLike: solicitante ? `%${solicitante}%` : null,
-    limit: safePageSize,
-    offset,
+  const rows = await InstanciasProcesso.findAll({
+    attributes: [
+      'id', 'processo_id', 'versao_processo_id', 'solicitante', 'identificador',
+      ['desc_iden', 'instance_desc_iden'],
+      ['dados_json', 'payload_json'], ['estado_execucao_json', 'runtime_state_json'],
+      ['elemento_atual_id', 'current_element_id'], 'status', ['iniciado_em', 'started_at'],
+      ['encerrado_em', 'ended_at'], ['dt_criacao', 'created_at'],
+      [col('processo.nome'), 'processo_nome'],
+      [col('processo.desc_iden'), 'processo_desc_iden'],
+      [col('versao.versao'), 'versao'],
+    ],
+    include: [
+      { model: Processos, as: 'processo', attributes: [], required: true },
+      { model: VersoesProcesso, as: 'versao', attributes: [], required: true },
+    ],
+    where: filtro,
+    order: [['dt_criacao', 'DESC'], ['id', 'DESC']],
+    ...paginar(safePage, safePageSize),
+    raw: true,
   });
 
-  const countRows = await db.query(
-    `SELECT COUNT(*) AS total
-     FROM instancias_processo i
-     WHERE (:processoId IS NULL OR i.processo_id = :processoId)
-       AND (:status IS NULL OR i.status = :status)
-       AND (:identificador IS NULL OR i.identificador LIKE :identificadorLike)
-       AND (:solicitante IS NULL OR i.solicitante LIKE :solicitanteLike)
-       AND (:startDate IS NULL OR i.iniciado_em >= :startDate)
-       AND (:endDate IS NULL OR i.iniciado_em < DATEADD(day, 1, :endDate))`,
-    { processoId, status, identificador, solicitante, startDate, endDate, identificadorLike: identificador ? `%${identificador}%` : null, solicitanteLike: solicitante ? `%${solicitante}%` : null }
-  );
+  const total = await InstanciasProcesso.count({ where: filtro });
 
   return {
     data: rows,
-    total: countRows[0] ? countRows[0].total : 0,
+    total,
     page: safePage,
     pageSize: safePageSize,
   };
 }
 
 async function getProcessInstanceStats(processoId) {
-  const rows = await db.query(
-    `SELECT status, COUNT(*) AS total
-     FROM instancias_processo
-     WHERE processo_id = :processoId
-     GROUP BY status`,
-    { processoId }
-  );
+  const rows = await InstanciasProcesso.findAll({
+    attributes: ['status'],
+    where: { processo_id: processoId },
+    raw: true,
+  });
 
   const summary = {
     total: 0,
@@ -173,21 +121,20 @@ async function getProcessInstanceStats(processoId) {
   };
 
   rows.forEach((row) => {
-    const amount = Number(row.total || 0);
     const status = String(row.status || '').toUpperCase();
-    summary.total += amount;
+    summary.total += 1;
 
     if (status === 'CONCLUIDA') {
-      summary.concluidas += amount;
+      summary.concluidas += 1;
       return;
     }
 
     if (status === 'ERRO' || status === 'FALHA') {
-      summary.com_erro += amount;
+      summary.com_erro += 1;
       return;
     }
 
-    summary.em_andamento += amount;
+    summary.em_andamento += 1;
   });
 
   return summary;

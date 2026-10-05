@@ -9,7 +9,7 @@ const sql = require('mssql');
 require('dotenv').config();
 
 const loginController = require('./controllers/loginController');
-const dbConfig = require('./config/database');
+const sequelize = require('./database/sequelize');
 const dbProtheus = require('./config/dbConfigProtheus');
 const dbDw = require('./config/dbConfigDw');
 const { registerBpmModule } = require('./backend/app');
@@ -198,8 +198,21 @@ app.get('/db-status', ensureAuth, async (req, res) => {
     }
   }
 
+  async function checkSequelize(label) {
+    try {
+      await sequelize.authenticate();
+      return { ok: true, label };
+    } catch (err) {
+      return {
+        ok: false,
+        label,
+        error: err && err.message ? err.message : String(err),
+      };
+    }
+  }
+
   const [erp, dw, protheus] = await Promise.all([
-    check('ERP', dbConfig),
+    checkSequelize('ERP'),
     check('DW', dbDw),
     check('PROTHEUS', dbProtheus),
   ]);

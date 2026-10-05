@@ -1,8 +1,15 @@
-const db = require('../models/db');
+const { EcmArquivos } = require('../../models');
+const { Op, idInserido, tabelaInexistente, igualSemCaixa } = require('../../database/consultas');
 
-function isMissingTableError(error) {
-  return Boolean(error && error.message && /Invalid object name/i.test(error.message));
-}
+const ATRIBUTOS = [
+  'id', 'processo_id', 'instancia_processo_id',
+  ['usuario_dono', 'owner_user'],
+  ['nome_arquivo', 'file_name'],
+  ['caminho_arquivo', 'file_path'],
+  ['tipo_mime', 'mime_type'],
+  ['tamanho_bytes', 'file_size'],
+  'versao', 'criado_por', 'dt_criacao', 'dt_atualizacao',
+];
 
 async function createFileRecord({
   processoId,
@@ -16,29 +23,24 @@ async function createFileRecord({
   uploadedBy,
 }) {
   try {
-    const result = await db.query(
-      `INSERT INTO ecm_arquivos
-        (processo_id, instancia_processo_id, usuario_dono, nome_arquivo, caminho_arquivo, tipo_mime, tamanho_bytes, versao,
-         criado_por, dt_criacao, dt_atualizacao)
-       VALUES
-        (:processoId, :instanciaId, :ownerUser, :fileName, :filePath, :mimeType, :fileSize, :version,
-         :uploadedBy, NOW(), NOW())`,
-      {
-        processoId,
-        instanciaId,
-        ownerUser,
-        fileName,
-        filePath,
-        mimeType,
-        fileSize,
-        version,
-        uploadedBy,
-      }
-    );
+    const agora = new Date();
+    const registro = await EcmArquivos.create({
+      processo_id: processoId,
+      instancia_processo_id: instanciaId,
+      usuario_dono: ownerUser,
+      nome_arquivo: fileName,
+      caminho_arquivo: filePath,
+      tipo_mime: mimeType,
+      tamanho_bytes: fileSize,
+      versao: version,
+      criado_por: uploadedBy,
+      dt_criacao: agora,
+      dt_atualizacao: agora,
+    });
 
-    return result.insertId;
+    return idInserido(registro);
   } catch (error) {
-    if (isMissingTableError(error)) {
+    if (tabelaInexistente(error)) {
       throw new Error('Tabela de ECM ainda nao foi criada no banco. Execute o script SQL novo.');
     }
     throw error;
@@ -47,62 +49,38 @@ async function createFileRecord({
 
 async function getLatestVersion(processoId, ownerUser, fileName) {
   try {
-    const rows = await db.query(
-      `SELECT MAX(versao) AS ultima_versao
-       FROM ecm_arquivos
-       WHERE processo_id = :processoId
-         AND usuario_dono = :ownerUser
-         AND nome_arquivo = :fileName`,
-      { processoId, ownerUser, fileName }
-    );
+    const ultima = await EcmArquivos.max('versao', {
+      where: { [Op.and]: [{ processo_id: processoId }, igualSemCaixa('usuario_dono', ownerUser), igualSemCaixa('nome_arquivo', fileName)] },
+    });
 
-    return Number(rows[0] ? rows[0].ultima_versao : 0) || 0;
+    return Number(ultima || 0) || 0;
   } catch (error) {
-    if (isMissingTableError(error)) return 0;
+    if (tabelaInexistente(error)) return 0;
     throw error;
   }
 }
 
 async function listFilesByProcess({ processoId, ownerUser = null }) {
   try {
-    return db.query(
-      `SELECT id, processo_id, instancia_processo_id,
-              usuario_dono AS owner_user,
-              nome_arquivo AS file_name,
-              caminho_arquivo AS file_path,
-              tipo_mime AS mime_type,
-              tamanho_bytes AS file_size,
-              versao, criado_por, dt_criacao, dt_atualizacao
-       FROM ecm_arquivos
-       WHERE processo_id = :processoId
-         AND (:ownerUser IS NULL OR usuario_dono = :ownerUser)
-       ORDER BY dt_criacao DESC`,
-      { processoId, ownerUser }
-    );
+    const filtro = [{ processo_id: processoId }];
+    if (ownerUser !== null && ownerUser !== undefined) filtro.push(igualSemCaixa('usuario_dono', ownerUser));
+    return await EcmArquivos.findAll({
+      attributes: ATRIBUTOS,
+      where: { [Op.and]: filtro },
+      order: [['dt_criacao', 'DESC'], ['id', 'DESC']],
+      raw: true,
+    });
   } catch (error) {
-    if (isMissingTableError(error)) return [];
+    if (tabelaInexistente(error)) return [];
     throw error;
   }
 }
 
 async function getFileById(id) {
   try {
-    const rows = await db.query(
-      `SELECT id, processo_id, instancia_processo_id,
-              usuario_dono AS owner_user,
-              nome_arquivo AS file_name,
-              caminho_arquivo AS file_path,
-              tipo_mime AS mime_type,
-              tamanho_bytes AS file_size,
-              versao, criado_por, dt_criacao, dt_atualizacao
-       FROM ecm_arquivos
-       WHERE id = :id`,
-      { id }
-    );
-
-    return rows[0] || null;
+    return await EcmArquivos.findOne({ attributes: ATRIBUTOS, where: { id }, raw: true });
   } catch (error) {
-    if (isMissingTableError(error)) return null;
+    if (tabelaInexistente(error)) return null;
     throw error;
   }
 }
