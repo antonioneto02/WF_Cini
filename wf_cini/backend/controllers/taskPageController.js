@@ -4,7 +4,7 @@ const { getCurrentUser } = require('../utils/requestUser');
 
 async function index(req, res, next) {
   try {
-    const username = (req.session && req.session.username) || (req.cookies && req.cookies.username) || null;
+    const username = (req.session && req.session.username) || null;
 
     const result = await taskService.listKanbanTasks({
       user: username,

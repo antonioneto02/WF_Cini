@@ -9,6 +9,7 @@ const sql = require('mssql');
 require('dotenv').config();
 
 const loginController = require('./controllers/loginController');
+const protheusUserRepository = require('./backend/repositories/protheusUserRepository');
 const dbConfig = require('./config/database');
 const dbProtheus = require('./config/dbConfigProtheus');
 const dbDw = require('./config/dbConfigDw');
@@ -62,7 +63,7 @@ app.use((req, res, next) => {
   });
 
   res.locals.currentPath = req.path || '/';
-  const login = (req.session && req.session.username) || (req.cookies && req.cookies.username) || 'Usuario';
+  const login = (req.session && req.session.username) || 'Usuario';
   const normalizedLogin = String(login || '').trim().toUpperCase();
   res.locals.user = {
     nome: login,
@@ -94,17 +95,23 @@ function isAuthenticated(req) {
   return Boolean(hasSession || hasToken);
 }
 
-function ensureAuth(req, res, next) {
-  if (!isAuthenticated(req)) {
+async function ensureAuth(req, res, next) {
+  const autenticado = await loginController.validarSessao(req, res).catch(() => false);
+  if (!autenticado) {
+    res.clearCookie('token');
+    res.clearCookie('refresh_token');
+    res.clearCookie('username');
+    res.clearCookie('user_code');
+    const querJson = req.xhr || (req.headers.accept || '').includes('application/json') || req.path.startsWith('/api/');
+    if (querJson) return res.status(401).json({ error: 'Sessão expirada. Faça login novamente.' });
     return res.redirect('/loginPage');
   }
 
-  if (req.session && !req.session.username && req.cookies && req.cookies.username) {
-    req.session.username = req.cookies.username;
-  }
-
-  if (req.session && !req.session.user_code && req.cookies && req.cookies.user_code) {
-    req.session.user_code = req.cookies.user_code;
+  if (!req.session.user_code) {
+    try {
+      const mappedUser = await protheusUserRepository.findUserByIdentifier(req.session.username);
+      if (mappedUser && mappedUser.codigo) req.session.user_code = String(mappedUser.codigo).trim();
+    } catch (_) {}
   }
 
   return next();
@@ -112,7 +119,7 @@ function ensureAuth(req, res, next) {
 
 function buildUser(req) {
   return {
-    nome: (req.session && req.session.username) || (req.cookies && req.cookies.username) || 'Usuario',
+    nome: (req.session && req.session.username) || 'Usuario',
     email: (req.session && req.session.user_email) || '',
     id: (req.session && req.session.user_id) || null,
   };

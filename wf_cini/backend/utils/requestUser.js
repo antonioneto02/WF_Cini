@@ -1,8 +1,6 @@
 function getCurrentUser(req) {
   return (req.session && req.session.user_code)
-    || (req.cookies && req.cookies.user_code)
     || (req.session && req.session.username)
-    || (req.cookies && req.cookies.username)
     || 'sistema';
 }
 

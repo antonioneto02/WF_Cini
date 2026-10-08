@@ -1,7 +1,7 @@
 const formService = require('../services/formService');
 
 function currentUser(req) {
-  return (req.session && req.session.username) || (req.cookies && req.cookies.username) || 'sistema';
+  return (req.session && req.session.username) || 'sistema';
 }
 
 async function list(req, res, next) {
